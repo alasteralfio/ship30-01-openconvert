@@ -14,17 +14,18 @@ Status: `[ ]` todo, `[x]` done.
 ### Checkpoint 1.1 — Builds and loads
 Test: load `dist/` unpacked in Chrome; the popup opens and renders the React shell; no console
 errors in the popup, background, or content contexts.
-Completed:
+Completed: 2026-08-03 — `npm run build` produces a valid unpacked `dist/`; typecheck + lint pass
+clean; loaded unpacked in Chrome and the popup renders the React shell with no console errors.
 
-- [ ] Set up the project and dependencies. npm project on Vite + TypeScript + React, plus
+- [x] Set up the project and dependencies. npm project on Vite + TypeScript + React, plus
   webextension-polyfill, react-icons, ESLint and Prettier, with dev/build/lint scripts defined.
-- [ ] Configure the MV3 multi-entry build.
-  - [ ] vite.config.ts and tsconfig.json
-  - [ ] build emits the service worker, content script, and popup to `dist/`
-- [ ] Move the scaffold into the src/ layout and wire the manifest.
-  - [ ] background/index.ts and content/index.ts
-  - [ ] popup shell (index.html, main.tsx, App.tsx)
-  - [ ] manifest points at the built entry points
+- [x] Configure the MV3 multi-entry build.
+  - [x] vite.config.ts and tsconfig.json
+  - [x] build emits the service worker, content script, and popup to `dist/`
+- [x] Move the scaffold into the src/ layout and wire the manifest.
+  - [x] background/index.ts and content/index.ts
+  - [x] popup shell (index.html, main.tsx, App.tsx)
+  - [x] manifest points at the built entry points
 
 ---
 
