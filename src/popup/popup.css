@@ -1,0 +1,7 @@
+/* Popup styles. Theme-aware (light/dark) per the QoL dark-mode setting. */
+
+.popup {
+  min-width: 260px;
+  padding: 12px;
+  font-family: system-ui, sans-serif;
+}

@@ -4,15 +4,21 @@
   "version": "0.1.0",
   "description": "Open-source Chrome extension to convert currencies and auto-convert prices on any web page.",
   "action": {
-    "default_popup": "src/popup.html"
+    "default_popup": "src/popup/index.html"
   },
   "background": {
-    "service_worker": "src/background.js"
+    "service_worker": "src/background/index.ts",
+    "type": "module"
   },
   "content_scripts": [
     {
       "matches": ["<all_urls>"],
-      "js": ["src/content.js"]
+      "js": ["src/content/index.ts"]
     }
+  ],
+  "permissions": ["storage", "alarms"],
+  "host_permissions": [
+    "https://open.er-api.com/*",
+    "https://api.frankfurter.dev/*"
   ]
 }
