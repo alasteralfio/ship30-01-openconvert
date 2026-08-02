@@ -18,6 +18,9 @@ export default tseslint.config(
     },
     plugins: { 'react-hooks': reactHooks },
     rules: {
+      // TypeScript already resolves identifiers (incl. Node globals in the Vite
+      // config), so no-undef is redundant and would false-positive on them.
+      'no-undef': 'off',
       'react-hooks/rules-of-hooks': 'error',
       'react-hooks/exhaustive-deps': 'warn',
     },

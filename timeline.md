@@ -5,6 +5,9 @@ load the extension unpacked and test the listed behaviour before moving on. Task
 work under each checkpoint; where a few small things belong together they share one task with
 several boxes. I date each checkpoint as I clear it.
 
+UI in phases 3–5 is built functional and near-unstyled on purpose; the visual design lands in one
+sweep in phase 6 (see overview.md > Tech Stack > Styling approach). Don't style as you go.
+
 Status: `[ ]` todo, `[x]` done.
 
 ---
@@ -23,7 +26,7 @@ clean; loaded unpacked in Chrome and the popup renders the React shell with no c
   - [x] vite.config.ts and tsconfig.json
   - [x] build emits the service worker, content script, and popup to `dist/`
 - [x] Move the scaffold into the src/ layout and wire the manifest.
-  - [x] background/index.ts and content/index.ts
+  - [x] background/service-worker.ts and content/content-script.ts
   - [x] popup shell (index.html, main.tsx, App.tsx)
   - [x] manifest points at the built entry points
 
@@ -34,28 +37,34 @@ clean; loaded unpacked in Chrome and the popup renders the React shell with no c
 ### Checkpoint 2.1 — Rates fetched and cached
 Test: from the background console, confirm a USD-anchored rate table is stored with a timestamp;
 force a manual refresh; go offline and confirm the last cached table is still returned.
-Completed:
+Completed: 2026-08-03 — verified in the service-worker console: a USD-anchored table is stored with
+timestamps (`source: open.er-api`), a manual `refresh()` re-fetches, and `getRates()` serves the
+cache. (Also fixed a chunk-name collision that was wiring the SW to the empty content chunk — entry
+files now have unique basenames; see CLAUDE.md > Architecture rules.)
 
-- [ ] Provider abstraction. A normalised RateProvider returning `{ base, rates, updatedAt,
+- [x] Provider abstraction. A normalised RateProvider returning `{ base, rates, updatedAt,
   nextUpdate }`.
-  - [ ] interface plus the open.er-api primary implementation
-  - [ ] Frankfurter fallback and failover
-- [ ] Rate cache and refresh. The worker fetches the single USD anchor table on install and on a 6h
+  - [x] interface plus the open.er-api primary implementation
+  - [x] Frankfurter fallback and failover
+- [x] Rate cache and refresh. The worker fetches the single USD anchor table on install and on a 6h
   alarm, stores it in storage.local with a timestamp, and serves the last good table when offline.
-  - [ ] fetch and store on install
-  - [ ] 6h alarm refresh
-  - [ ] offline fallback
+  - [x] fetch and store on install
+  - [x] 6h alarm refresh
+  - [x] offline fallback
 
 ### Checkpoint 2.2 — Conversion works end to end
 Test: from the popup, request rates through the worker and convert a sample amount; the result
 matches a manual calculation.
-Completed:
+Completed: 2026-08-03 — code complete; `npm test` (6 convert() cases), `npm run build`, and
+`npm run lint` all pass clean. Popup-console round-trip (`openconvert.getRates()` → `openconvert.convert(...)`)
+is the manual step to run on your machine.
 
-- [ ] Shared conversion and currency data.
-  - [ ] currencies.ts (codes, symbols, locales)
-  - [ ] convert.ts using `A→B = rates[B] / rates[A]` with rounding
-  - [ ] Vitest unit tests for convert()
-- [ ] Messaging contract. Typed request/response in shared/messaging.ts; the worker answers
+- [x] Shared conversion and currency data.
+  - [x] currencies.ts (codes, symbols, locales) — Intl-derived names/symbols + hand-authored
+    ambiguous-symbol map; supports every code the provider returns.
+  - [x] convert.ts using `A→B = amount * rates[B] / rates[A]` with rounding
+  - [x] Vitest unit tests for convert()
+- [x] Messaging contract. Typed request/response in shared/messaging.ts; the worker answers
   getRates and refreshRates.
 
 ---
@@ -128,17 +137,45 @@ Completed:
 
 ---
 
-## Phase 6 — QoL, cross-browser, packaging
+## Phase 6 — UI sweep, QoL, testing, packaging
 
-### Checkpoint 6.1 — Polish and ship
-Test: full smoke test of the main flows in a clean profile; dark mode toggles cleanly; the packaged
-build loads unpacked.
+Everything up to here ships functional and near-unstyled. This phase designs the look in one pass,
+then polishes, verifies, and packages.
+
+### Checkpoint 6.1 — UI sweep
+Test: every surface (popup, settings, in-page converted prices and tooltips) shares one clean
+neutral theme; no leftover ad-hoc styling from earlier checkpoints.
 Completed:
 
-- [ ] Dark mode. The popup follows prefers-color-scheme with a manual override toggle.
-- [ ] Cross-browser pass. Audit for raw chrome.* calls behind the polyfill and note any
-  Firefox/Edge manifest differences (verify only, no separate ship yet).
-- [ ] Package and document.
-  - [ ] clean lint and production build
-  - [ ] load-unpacked smoke test in a clean profile
-  - [ ] README and overview updated
+- [ ] Neutral theme. Define the shared visual language (spacing, type, colour, controls) as one
+  small set of tokens and apply it across the popup and settings.
+  - [ ] popup and settings restyled to the neutral theme
+  - [ ] strip any placeholder or leftover styles from earlier phases
+- [ ] In-page styling. Apply the same neutral look to converted prices, the hover tooltip, and the
+  highlight style.
+
+### Checkpoint 6.2 — QoL polish
+Test: the common flows feel finished — sensible loading, empty, and error states, clean keyboard
+and focus behaviour, and readable copy throughout.
+Completed:
+
+- [ ] States. Loading, empty, and error states for the popup (no rates yet, offline, fetch failed).
+- [ ] Interaction polish. Focus order, keyboard access, and hover/active feedback on controls.
+- [ ] Copy pass. Labels, tooltips, and messages read clearly and consistently.
+
+### Checkpoint 6.3 — Testing and cross-browser
+Test: full smoke and regression across the main flows in a clean profile; no raw chrome.* calls
+outside the polyfill.
+Completed:
+
+- [ ] Regression sweep. Re-run every earlier checkpoint's test end to end in a clean profile.
+- [ ] Cross-browser check. Audit for raw chrome.* behind the polyfill and note any Firefox/Edge
+  manifest differences (verify only, no separate ship yet).
+
+### Checkpoint 6.4 — Package and document
+Test: the packaged build loads unpacked from a clean download.
+Completed:
+
+- [ ] Build. Clean lint and a production build.
+- [ ] Package. Zipped artifact loads unpacked and smoke-tests clean.
+- [ ] Docs. README and overview updated to match the shipped state.

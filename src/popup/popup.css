@@ -1,4 +1,4 @@
-/* Popup styles. Theme-aware (light/dark) per the QoL dark-mode setting. */
+/* Popup styles. Single neutral theme (no light/dark switching); designed in the Phase 6 UI sweep. */
 
 .popup {
   min-width: 260px;
