@@ -1,8 +1,24 @@
-// Searchable currency picker used for both the source and target selectors. Filters
-// the codes from the cached rate table by ISO code or display name.
+// Searchable currency picker, used for both the source and target. An MUI Autocomplete
+// over the cached table's codes, matching on ISO code or name, with the same
+// onChange(code) shape everywhere it's used.
+//
+// Focusing the field clears it so you can start typing a search right away; if you don't
+// pick anything, blurring puts the current selection back. We get that by controlling
+// `inputValue`: empty while focused (unless you've typed), otherwise the option's label.
 
 import { useMemo, useState } from 'react';
+import type { FocusEvent, MouseEvent } from 'react';
+import Autocomplete from '@mui/material/Autocomplete';
+import TextField from '@mui/material/TextField';
+import IconButton from '@mui/material/IconButton';
+import StarIcon from '@mui/icons-material/Star';
+import StarBorderIcon from '@mui/icons-material/StarBorder';
 import { getCurrencyName } from '../shared/currencies';
+
+interface Option {
+  code: string;
+  name: string;
+}
 
 interface Props {
   label: string;
@@ -11,73 +27,111 @@ interface Props {
   /** All selectable ISO codes (keys of the cached rate table). */
   codes: string[];
   onChange: (code: string) => void;
+  /** Clear the field after a pick (used by the "add currency" pickers). */
+  clearOnSelect?: boolean;
+  /** Show a favourite star on each dropdown row. It doesn't save anywhere yet — this is
+   *  just the look of the pinning feature. */
+  showFavourite?: boolean;
 }
 
-export default function CurrencyCombobox({ label, value, codes, onChange }: Props) {
-  const [query, setQuery] = useState('');
-  const [open, setOpen] = useState(false);
-
-  const options = useMemo(
+export default function CurrencyCombobox({
+  label,
+  value,
+  codes,
+  onChange,
+  clearOnSelect = false,
+  showFavourite = false,
+}: Props) {
+  // Which codes are starred. Lives only for as long as the popup is open.
+  const [favourites, setFavourites] = useState<Set<string>>(new Set());
+  const toggleFavourite = (e: MouseEvent, code: string) => {
+    // Keep focus + stop the row's select handler from firing.
+    e.preventDefault();
+    e.stopPropagation();
+    setFavourites((prev) => {
+      const next = new Set(prev);
+      if (next.has(code)) next.delete(code);
+      else next.add(code);
+      return next;
+    });
+  };
+  const options = useMemo<Option[]>(
     () => codes.map((code) => ({ code, name: getCurrencyName(code) })),
     [codes],
   );
 
-  const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    if (!q) return options;
-    return options.filter(
-      ({ code, name }) => code.toLowerCase().includes(q) || name.toLowerCase().includes(q),
-    );
-  }, [options, query]);
+  const selected = clearOnSelect ? null : (options.find((o) => o.code === value) ?? null);
+  const selectedLabel = selected ? `${selected.code} — ${selected.name}` : '';
 
-  function select(code: string) {
-    onChange(code);
-    setOpen(false);
-    setQuery('');
-  }
+  const [focused, setFocused] = useState(false);
+  const [typed, setTyped] = useState<string | null>(null);
+  // Blank while focused (clear so the user can type); restore the selection on blur.
+  const inputValue = focused ? (typed ?? '') : selectedLabel;
 
   return (
-    <div className="oc-combobox">
-      <label>
-        {label}
-        <input
-          type="text"
-          role="combobox"
-          aria-expanded={open}
-          // Show the current selection when closed; the live query while searching.
-          value={open ? query : value ? `${value} — ${getCurrencyName(value)}` : ''}
+    <Autocomplete<Option, false, boolean, false>
+      options={options}
+      value={selected}
+      autoHighlight
+      openOnFocus
+      selectOnFocus={false}
+      blurOnSelect
+      disableClearable={!clearOnSelect}
+      inputValue={inputValue}
+      onInputChange={(_, val, reason) => {
+        if (reason === 'input') setTyped(val);
+      }}
+      getOptionLabel={(o) => `${o.code} — ${o.name}`}
+      isOptionEqualToValue={(o, v) => o.code === v.code}
+      onChange={(_, option) => {
+        if (option) onChange(option.code);
+        setTyped(null);
+      }}
+      renderInput={(params) => (
+        <TextField
+          {...params}
+          label={label}
           placeholder="Search currency"
-          onFocus={() => {
-            setOpen(true);
-            setQuery('');
+          inputProps={{
+            ...params.inputProps,
+            onFocus: (e: FocusEvent<HTMLInputElement>) => {
+              params.inputProps.onFocus?.(e);
+              setFocused(true);
+              setTyped(null);
+            },
+            onBlur: (e: FocusEvent<HTMLInputElement>) => {
+              params.inputProps.onBlur?.(e);
+              setFocused(false);
+              setTyped(null);
+            },
           }}
-          onChange={(e) => setQuery(e.target.value)}
-          onBlur={() => setOpen(false)}
         />
-      </label>
-      {open && (
-        <ul className="oc-combobox-list" role="listbox">
-          {filtered.length === 0 ? (
-            <li className="oc-combobox-empty">No matches</li>
-          ) : (
-            filtered.map(({ code, name }) => (
-              <li
-                key={code}
-                role="option"
-                aria-selected={code === value}
-                // mousedown fires before the input's blur; preventDefault keeps
-                // focus so the click selects instead of just closing the list.
-                onMouseDown={(e) => {
-                  e.preventDefault();
-                  select(code);
-                }}
-              >
-                {code} — {name}
-              </li>
-            ))
-          )}
-        </ul>
       )}
-    </div>
+      renderOption={(props, option) => (
+        <li {...props} key={option.code} style={{ ...props.style, display: 'flex' }}>
+          <strong style={{ marginRight: 6 }}>{option.code}</strong>
+          <span style={{ flex: 1 }}>{option.name}</span>
+          {showFavourite && (
+            <IconButton
+              size="small"
+              edge="end"
+              aria-label={
+                favourites.has(option.code)
+                  ? `Unfavourite ${option.code}`
+                  : `Favourite ${option.code}`
+              }
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={(e) => toggleFavourite(e, option.code)}
+            >
+              {favourites.has(option.code) ? (
+                <StarIcon fontSize="small" color="warning" />
+              ) : (
+                <StarBorderIcon fontSize="small" />
+              )}
+            </IconButton>
+          )}
+        </li>
+      )}
+    />
   );
 }

@@ -1,19 +1,28 @@
-// Popup root: the quick converter UI. Reads/writes settings through shared/storage
-// and asks the worker for the cached rate table by message — no network here. Every
-// pair converts locally off the one cached USD-anchored table.
+// Popup root: loads the cached rate table (by message) and user settings (via
+// shared/storage), then renders the tabbed shell — Convert / Sites / Settings. All
+// conversion is local off the one cached USD-anchored table; no network here.
 
 import { useEffect, useMemo, useState } from 'react';
-import { LuArrowRightLeft, LuCopy, LuRefreshCw } from 'react-icons/lu';
+import Box from '@mui/material/Box';
+import Card from '@mui/material/Card';
+import Button from '@mui/material/Button';
+import Stack from '@mui/material/Stack';
+import Typography from '@mui/material/Typography';
+import CircularProgress from '@mui/material/CircularProgress';
+import ToggleButton from '@mui/material/ToggleButton';
+import ToggleButtonGroup from '@mui/material/ToggleButtonGroup';
+import SwapHorizIcon from '@mui/icons-material/SwapHoriz';
+import PublicIcon from '@mui/icons-material/Public';
+import TuneIcon from '@mui/icons-material/Tune';
 import browser from 'webextension-polyfill';
 import { sendMessage, sendToContent } from '../shared/messaging';
-import { convert } from '../shared/convert';
-import { formatNumber } from '../shared/format';
 import { getSettings, setSettings as persistSettings } from '../shared/storage';
 import type { RateCache, Settings } from '../shared/storage';
-import CurrencyCombobox from './CurrencyCombobox';
-import FromFilter from './FromFilter';
-import SiteRules from './SiteRules';
-import FormatSettings from './FormatSettings';
+import ConvertTab from './tabs/ConvertTab';
+import SitesTab from './tabs/SitesTab';
+import SettingsTab from './tabs/SettingsTab';
+
+type TabId = 'convert' | 'sites' | 'settings';
 
 /**
  * Ask the active tab's content script for its dominant currency and adopt it as the
@@ -25,7 +34,7 @@ async function detectPageSource(current: Settings): Promise<string | null> {
   const [tab] = await browser.tabs.query({ active: true, currentWindow: true });
   if (tab?.id === undefined) return null;
   const report = await sendToContent(tab.id, { type: 'getDominantCurrency' }).catch(() => undefined);
-  const dominant = report?.dominant ?? null;
+  const dominant = report && 'dominant' in report ? report.dominant : null;
   return dominant && dominant !== current.source ? dominant : null;
 }
 
@@ -41,24 +50,13 @@ async function activeTabHost(): Promise<string | null> {
   }
 }
 
-/** Compact "updated Xh ago" label from a ms-epoch timestamp. */
-function timeAgo(ms: number): string {
-  const mins = Math.round((Date.now() - ms) / 60000);
-  if (mins < 1) return 'just now';
-  if (mins < 60) return `${mins}m ago`;
-  const hours = Math.round(mins / 60);
-  if (hours < 24) return `${hours}h ago`;
-  return `${Math.round(hours / 24)}d ago`;
-}
-
 export default function App() {
   const [rates, setRates] = useState<RateCache | null>(null);
   const [settings, setSettings] = useState<Settings | null>(null);
-  const [amount, setAmount] = useState('1');
   const [status, setStatus] = useState<'loading' | 'ready' | 'no-rates'>('loading');
-  const [refreshing, setRefreshing] = useState(false);
-  const [copied, setCopied] = useState(false);
   const [host, setHost] = useState<string | null>(null);
+  const [tab, setTab] = useState<TabId>('convert');
+  const [retrying, setRetrying] = useState(false);
 
   useEffect(() => {
     void (async () => {
@@ -84,189 +82,83 @@ export default function App() {
     await persistSettings(patch);
   }
 
-  const codes = useMemo(() => (rates ? Object.keys(rates.rates).sort() : []), [rates]);
-
-  const amountNum = Number(amount);
-  const result = useMemo(() => {
-    if (!rates || !settings || amount.trim() === '' || !Number.isFinite(amountNum)) return null;
-    try {
-      return convert(amountNum, settings.source, settings.target, rates.rates, settings.precision);
-    } catch {
-      return null;
-    }
-  }, [rates, settings, amount, amountNum]);
-
-  // Display/copy value, formatted with the user's precision + number format.
-  const formattedResult = useMemo(
-    () => (result === null || !settings ? null : formatNumber(result, settings.numberFormat, settings.precision)),
-    [result, settings],
-  );
-
-  async function refresh(): Promise<void> {
-    setRefreshing(true);
-    try {
-      const cache = await sendMessage({ type: 'refreshRates' });
-      setRates(cache);
-      setStatus(cache ? 'ready' : 'no-rates');
-    } finally {
-      setRefreshing(false);
-    }
-  }
-
-  /** Clear the lock and immediately re-adopt the page's dominant currency. */
+  /** Clear the source lock and immediately re-adopt the page's dominant currency. */
   async function resetSourceToAuto(): Promise<void> {
     if (!settings) return;
     const detected = await detectPageSource({ ...settings, sourceManuallySet: false });
     await update({ sourceManuallySet: false, ...(detected ? { source: detected } : {}) });
   }
 
-  async function copyResult(): Promise<void> {
-    if (formattedResult === null) return;
-    await navigator.clipboard.writeText(formattedResult);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1200);
+  async function retry(): Promise<void> {
+    setRetrying(true);
+    try {
+      const cache = await sendMessage({ type: 'refreshRates' });
+      setRates(cache);
+      setStatus(cache ? 'ready' : 'no-rates');
+    } finally {
+      setRetrying(false);
+    }
   }
 
-  if (status === 'loading' || !settings) {
-    return <main className="popup">Loading…</main>;
-  }
-
-  if (status === 'no-rates' || !rates) {
-    return (
-      <main className="popup">
-        <p>No exchange rates yet — check your connection.</p>
-        <button type="button" onClick={() => void refresh()} disabled={refreshing}>
-          {refreshing ? 'Refreshing…' : 'Retry'}
-        </button>
-      </main>
-    );
-  }
+  const codes = useMemo(() => (rates ? Object.keys(rates.rates).sort() : []), [rates]);
 
   return (
-    <main className="popup">
-      <label className="oc-kill-switch">
-        <input
-          type="checkbox"
-          checked={settings.enabled}
-          onChange={() => void update({ enabled: !settings.enabled })}
-        />
-        Auto-convert prices on pages
-      </label>
+    <Box sx={{ width: 360, bgcolor: 'background.default', p: 1.5 }}>
+      <Box sx={{ display: 'flex', justifyContent: 'center', mb: 1.5 }}>
+        <ToggleButtonGroup
+          value={tab}
+          exclusive
+          size="small"
+          color="primary"
+          onChange={(_, next: TabId | null) => next && setTab(next)}
+          aria-label="Popup section"
+        >
+          <ToggleButton value="convert" aria-label="Convert">
+            <SwapHorizIcon fontSize="small" sx={{ mr: 0.5 }} />
+            Convert
+          </ToggleButton>
+          <ToggleButton value="sites" aria-label="Sites">
+            <PublicIcon fontSize="small" sx={{ mr: 0.5 }} />
+            Sites
+          </ToggleButton>
+          <ToggleButton value="settings" aria-label="Settings">
+            <TuneIcon fontSize="small" sx={{ mr: 0.5 }} />
+            Settings
+          </ToggleButton>
+        </ToggleButtonGroup>
+      </Box>
 
-      <label>
-        Amount
-        <input
-          type="number"
-          inputMode="decimal"
-          value={amount}
-          onChange={(e) => setAmount(e.target.value)}
-        />
-      </label>
-
-      <CurrencyCombobox
-        label="From"
-        value={settings.source}
-        codes={codes}
-        // A manual source change permanently locks out per-page auto-detect.
-        onChange={(code) => void update({ source: code, sourceManuallySet: true })}
-      />
-
-      <button
-        type="button"
-        aria-label="Swap source and target"
-        onClick={() =>
-          void update({
-            source: settings.target,
-            target: settings.source,
-            sourceManuallySet: true,
-          })
-        }
-      >
-        <LuArrowRightLeft /> Swap
-      </button>
-
-      <CurrencyCombobox
-        label="To"
-        value={settings.target}
-        codes={codes}
-        onChange={(code) => void update({ target: code })}
-      />
-
-      <FromFilter
-        value={settings.fromFilter}
-        codes={codes}
-        onChange={(list) => void update({ fromFilter: list })}
-      />
-
-      <SiteRules settings={settings} host={host} onChange={(patch) => void update(patch)} />
-
-      <FormatSettings settings={settings} onChange={(patch) => void update(patch)} />
-
-      <fieldset className="oc-display">
-        <legend>Page display</legend>
-        <label className="oc-inline">
-          <input
-            type="radio"
-            name="displayMode"
-            checked={settings.displayMode === 'replace'}
-            onChange={() => void update({ displayMode: 'replace' })}
+      <Card sx={{ p: 1.5 }}>
+        {status === 'loading' || !settings ? (
+          <Stack alignItems="center" spacing={1} sx={{ py: 4 }}>
+            <CircularProgress size={22} />
+            <Typography variant="body2" color="text.secondary">
+              Loading rates…
+            </Typography>
+          </Stack>
+        ) : status === 'no-rates' || !rates ? (
+          <Stack spacing={1.5} sx={{ py: 2 }}>
+            <Typography variant="body2">
+              No exchange rates yet — check your connection.
+            </Typography>
+            <Button variant="contained" onClick={() => void retry()} disabled={retrying}>
+              {retrying ? 'Retrying…' : 'Retry'}
+            </Button>
+          </Stack>
+        ) : tab === 'convert' ? (
+          <ConvertTab
+            rates={rates}
+            settings={settings}
+            codes={codes}
+            update={update}
+            resetSourceToAuto={resetSourceToAuto}
           />
-          Replace price (original on hover)
-        </label>
-        <label className="oc-inline">
-          <input
-            type="radio"
-            name="displayMode"
-            checked={settings.displayMode === 'hover'}
-            onChange={() => void update({ displayMode: 'hover' })}
-          />
-          Keep original (converted on hover)
-        </label>
-        <label className="oc-inline">
-          <input
-            type="checkbox"
-            checked={settings.highlight}
-            onChange={() => void update({ highlight: !settings.highlight })}
-          />
-          Highlight converted prices
-        </label>
-      </fieldset>
-
-      <div className="oc-result">
-        {formattedResult === null ? (
-          <span>—</span>
+        ) : tab === 'sites' ? (
+          <SitesTab settings={settings} host={host} codes={codes} update={update} />
         ) : (
-          <span>
-            {amountNum} {settings.source} = {formattedResult} {settings.target}
-          </span>
+          <SettingsTab settings={settings} update={update} />
         )}
-        <button
-          type="button"
-          aria-label="Copy converted value"
-          onClick={() => void copyResult()}
-          disabled={formattedResult === null}
-        >
-          <LuCopy /> {copied ? 'Copied' : 'Copy'}
-        </button>
-      </div>
-
-      <div className="oc-status">
-        <span>Rates updated {timeAgo(rates.updatedAt)}</span>
-        <button
-          type="button"
-          aria-label="Refresh rates"
-          onClick={() => void refresh()}
-          disabled={refreshing}
-        >
-          <LuRefreshCw /> {refreshing ? 'Refreshing…' : 'Refresh'}
-        </button>
-      </div>
-
-      {settings.sourceManuallySet && (
-        <button type="button" onClick={() => void resetSourceToAuto()}>
-          Reset source to auto-detect
-        </button>
-      )}
-    </main>
+      </Card>
+    </Box>
   );
 }

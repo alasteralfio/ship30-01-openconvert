@@ -7,7 +7,7 @@
 
 import browser from 'webextension-polyfill';
 import { sendMessage } from '../shared/messaging';
-import type { ContentRequest, DominantCurrencyReport } from '../shared/messaging';
+import type { ContentRequest, ContentResponse } from '../shared/messaging';
 import { getSettings, DEFAULT_SETTINGS } from '../shared/storage';
 import type { RateCache, Settings } from '../shared/storage';
 import { convert } from '../shared/convert';
@@ -15,6 +15,7 @@ import { formatNumber } from '../shared/format';
 import { siteConverts } from '../shared/sites';
 import { detectPrices } from './detect';
 import type { DetectionContext, PriceMatch } from './detect';
+import { renderShellPreview } from './shells';
 
 const CONVERTED_ATTR = 'data-oc-converted'; // marks a tracked price (never re-detected)
 const HIGHLIGHT_ATTR = 'data-oc-highlight'; // present when the highlight toggle is on
@@ -275,19 +276,30 @@ function dominantCurrency(): string | null {
 }
 
 browser.runtime.onMessage.addListener(
-  (message: unknown): Promise<DominantCurrencyReport> | undefined => {
-    if ((message as ContentRequest | undefined)?.type !== 'getDominantCurrency') return undefined;
-    return Promise.resolve({ dominant: dominantCurrency(), tally: { ...pageTally } });
+  (message: unknown): Promise<ContentResponse> | undefined => {
+    const type = (message as ContentRequest | undefined)?.type;
+    if (type === 'getDominantCurrency') {
+      return Promise.resolve({ dominant: dominantCurrency(), tally: { ...pageTally } });
+    }
+    if (type === 'previewShells') {
+      renderShellPreview();
+      return Promise.resolve({ ok: true });
+    }
+    return undefined;
   },
 );
 
-// --- Highlight style (placeholder look) -----------------------------------------
+// --- Highlight style -------------------------------------------------------------
+// The marker for converted prices when the highlight toggle is on. Kept subtle and
+// layout-safe: a faint tint (a background never changes the box size) and a thin
+// underline in the same blue the popup uses. We force the colours with !important so a
+// shop's own price styling can't wash them out.
 
 function injectHighlightStyle(): void {
   if (document.getElementById('oc-style')) return;
   const style = document.createElement('style');
   style.id = 'oc-style';
-  style.textContent = `[${HIGHLIGHT_ATTR}]{text-decoration:underline dotted;text-underline-offset:2px;}`;
+  style.textContent = `[${HIGHLIGHT_ATTR}]{background-color:rgba(25,118,210,0.10)!important;border-radius:3px;text-decoration:underline!important;text-decoration-color:rgba(25,118,210,0.55)!important;text-decoration-thickness:2px;text-underline-offset:2px;}`;
   (document.head ?? document.documentElement).appendChild(style);
 }
 

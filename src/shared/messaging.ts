@@ -24,7 +24,10 @@ export function sendMessage(request: Request): Promise<Response> {
 // auto-detect. The content script answers these.
 
 /** Requests the popup sends to a tab's content script. */
-export type ContentRequest = { type: 'getDominantCurrency' };
+export type ContentRequest =
+  | { type: 'getDominantCurrency' }
+  // Show the in-page UI preview (the mock toast/total/column cards) on the page.
+  | { type: 'previewShells' };
 
 /** The content script's per-page currency stats. */
 export interface DominantCurrencyReport {
@@ -34,7 +37,7 @@ export interface DominantCurrencyReport {
   tally: Record<string, number>;
 }
 
-export type ContentResponse = DominantCurrencyReport;
+export type ContentResponse = DominantCurrencyReport | { ok: true };
 
 /**
  * Send a typed request to a tab's content script. Resolves `undefined` if no

@@ -1,74 +1,23 @@
-/* Popup styles. One neutral theme, no light/dark switching. Kept intentionally
-   minimal for now — just enough structure for the converter to work, notably the
-   combobox's floating list (needs positioning and an opaque background). The full
-   visual design comes later; don't grow this into a bespoke theme yet. */
+/* Popup base. The visual system now lives in the MUI theme (src/popup/theme.ts) and
+   CssBaseline; this file only pins the popup body size and hides scrollbars. */
 
-.popup {
-  min-width: 260px;
-  padding: 12px;
-  font-family: system-ui, sans-serif;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.popup label {
-  display: flex;
-  flex-direction: column;
-}
-
-.oc-kill-switch,
-.popup label.oc-kill-switch,
-.popup label.oc-inline {
-  flex-direction: row;
-  gap: 6px;
-  align-items: center;
-}
-
-.oc-from-filter,
-.oc-display {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.oc-chips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
+html,
+body {
   margin: 0;
-  padding: 0;
-  list-style: none;
+  width: 360px;
 }
 
-/* Searchable currency picker — the list floats over following content. */
-.oc-combobox {
-  position: relative;
+#root {
+  width: 360px;
 }
 
-.oc-combobox-list {
-  position: absolute;
-  z-index: 1;
-  left: 0;
-  right: 0;
-  max-height: 200px;
-  overflow-y: auto;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-  border: 1px solid #ccc;
-  background: #fff;
+/* Hide scrollbars everywhere but keep scrolling. A scrollbar that appears only when a
+   tab overflows would steal width and make the popup jump between tabs. */
+html {
+  scrollbar-width: none; /* Firefox */
 }
 
-.oc-combobox-list li {
-  padding: 2px 6px;
-  cursor: pointer;
-}
-
-.oc-result,
-.oc-status {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-  justify-content: space-between;
+*::-webkit-scrollbar {
+  width: 0;
+  height: 0; /* Chromium/WebKit */
 }

@@ -196,19 +196,40 @@ features' UI, as static shells with no behaviour wired yet.
 Test: every surface shares one clean neutral theme and renders correctly with placeholder data — the
 existing popup/settings/in-page views plus the new-feature shells — with no leftover ad-hoc styling
 and no logic behind the new controls.
-Completed:
+Completed: 2026-08-03 — the UI sweep landed in two passes. **Pass 1 (theme + three tabs):** adopted
+**Material UI v6** (per overview.md > UI) — pinned to v6, not the latest major, because MUI 7+/9 target
+React 19 and this project is on React 18 (their component overloads don't typecheck against React 18
+types). `src/popup/theme.ts` is one `createTheme` neutral theme (MUI standard palette, tuned
+shape/density/typography, soft-grey canvas + white cards); `main.tsx` wraps the app in `ThemeProvider`
++ `CssBaseline`; `App.tsx` loads data then renders a centered `ToggleButtonGroup` tab bar (Convert /
+Sites / Settings, MUI icons) over one master `Card`, tabs in `src/popup/tabs/`. `CurrencyCombobox` is
+now an MUI `Autocomplete` that clears on focus and restores on blur. In-page highlight restyled to a
+subtle theme-accent underline + tint. Scrollbars hidden globally (scroll intact) so the popup width
+never jumps. Vetoed controls removed (freshness label, manual refresh, copy-value, standalone kill
+switch — on/off now = the Sites "Live price conversion" toggle). **Pass 2 (seven shells, visual/mock,
+no persisted logic):** Convert tab gained pinned/favourite pair chips (+ a placeholder "Pin"), an
+inline-math amount field (accepts an expression; plain numbers still convert, evaluation is 6.2), and
+multi-target rows (ephemeral extra target currencies with add/remove); the currency dropdowns gained a
+favourite star (`showFavourite`, ephemeral). SiteRules gained a per-site target-override picker
+(ephemeral). The three **in-page** shells (select-to-convert toast, page/selection total panel,
+table-column button) are themed DOM built in `src/content/shells.ts` and triggered on demand by the
+Settings tab's "Preview in-page UI" button (`previewShells` message → content script), so they never
+appear during normal browsing. `npm run build`/`lint`/`test` (35) pass clean.
 
-- [ ] Neutral theme. Define the shared visual language (spacing, type, colour, controls) as one
+- [x] Neutral theme. Define the shared visual language (spacing, type, colour, controls) as one
   small set of tokens and apply it across the popup, settings, and in-page output.
-  - [ ] popup, settings, and in-page prices/tooltips/highlight restyled to the neutral theme
-  - [ ] strip any placeholder or leftover styles from earlier phases
-- [ ] New-feature UI shells (visual only, mock data, no logic).
-  - [ ] multi-target view and pinned/favourite pair chips
-  - [ ] inline-math amount field (accepts the expression; no evaluation yet)
-  - [ ] per-site target-override control in the site-rules panel
-  - [ ] select-to-convert tooltip/toast
-  - [ ] page/selection total panel
-  - [ ] table-aware "convert column" affordance
+  - [x] popup, settings, and in-page prices/tooltips/highlight restyled to the neutral theme
+  - [x] strip any placeholder or leftover styles from earlier phases
+- [x] Remove the vetoed controls during the rebuild: freshness label, manual refresh, copy-value,
+  and the standalone global on/off switch (the on/off now lives as the Sites "live content editing"
+  toggle).
+- [x] New-feature UI shells (visual only, mock data, no logic).
+  - [x] multi-target view and pinned/favourite pair chips
+  - [x] inline-math amount field (accepts the expression; no evaluation yet)
+  - [x] per-site target-override control in the site-rules panel
+  - [x] select-to-convert tooltip/toast
+  - [x] page/selection total panel
+  - [x] table-aware "convert column" affordance
 
 ### Checkpoint 6.2 — New features (logic + test)
 Wire up every new feature and test each on real pages. One checkpoint, built together.
