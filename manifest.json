@@ -16,7 +16,7 @@
       "js": ["src/content/content-script.ts"]
     }
   ],
-  "permissions": ["storage", "alarms"],
+  "permissions": ["storage", "alarms", "activeTab"],
   "host_permissions": [
     "https://open.er-api.com/*",
     "https://api.frankfurter.dev/*"

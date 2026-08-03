@@ -99,22 +99,42 @@ source lands with the content script in Phase 4 — until then it's a documented
 Test: on a normal product or shop page, prices convert to the target in place, hovering shows the
 original, the from-filter narrows what converts, and the popup source auto-fills from the page's
 dominant currency.
-Completed:
+Completed: 2026-08-03 — `detect.ts` finds symbol/qualifier and ISO-code prices across common
+thousand/decimal formats (14 Vitest cases) with the full ambiguous-symbol priority order; the
+content script pulls the cached table once, converts each match to the target, rewrites it in place
+as `<value> <TARGET-CODE>` inside a `data-oc-converted` span with the original in the `title`
+tooltip, and skips script/style/editable/already-converted nodes. The from-filter (empty = All,
+else a chosen set) narrows what converts, and the >50% dominant currency is reported to the popup
+(`getDominantCurrency` over `tabs.sendMessage`, `activeTab` permission) to auto-fill the source
+while `sourceManuallySet` is false. Build/lint/test pass clean. (Dynamic re-scan, display modes,
+and highlight are Checkpoint 4.2.)
+Follow-up (2026-08-03, after real-page testing): real shops (Amazon, Codashop) split each price
+across sibling elements, so a text-node-only scan couldn't see them. Added a second **element-level
+pass** that rewrites the innermost element whose whole text is one price, and **broadened the symbol
+set** with distinctive single-currency glyphs (`Rp`, `RM`, `zł`, `Kč`, `₹ ₩ ₽ ฿ ₺ ₴ ₦ ₱ ₫ ₪`). Also
+made "reset to auto-detect" re-adopt the dominant currency immediately instead of on reopen.
 
-- [ ] Price detection. detect.ts finds symbol and ISO-code amounts across common thousand/decimal
+- [x] Price detection. detect.ts finds symbol and ISO-code amounts across common thousand/decimal
   formats and returns the currency, amount, and node.
-  - [ ] symbol and code matching with number parsing
-  - [ ] ambiguous-symbol resolution: qualifier, then from-filter, then TLD/lang, then default
-- [ ] Convert and rewrite. The content script pulls the cached table once, converts matches to the
+  - [x] symbol and code matching with number parsing
+  - [x] ambiguous-symbol resolution: qualifier, then from-filter, then TLD/lang, then default
+- [x] Convert and rewrite. The content script pulls the cached table once, converts matches to the
   target, replaces the text in place, keeps the original in the title tooltip, and marks nodes so
   they are never converted twice.
-- [ ] From-filter and dominant currency. Honour specific-currency vs All, compute the >50% dominant
+- [x] From-filter and dominant currency. Honour specific-currency vs All, compute the >50% dominant
   currency, and pass it to the popup for auto-detect.
 
 ### Checkpoint 4.2 — Handles dynamic pages
 Test: on an infinite-scroll or SPA page, newly loaded prices convert within a couple of seconds
 with no double-conversion; switch display modes; toggle the highlight.
 Completed:
+
+> Verification targets carried over from 4.1 testing (both are dynamic-content cases): **Codashop**
+> (client-side SPA — prices fetched after load, so the one-shot scan misses them) and **Etsy**
+> search results (the *visible* sale price is JS-populated after render — its static screen-reader
+> and strikethrough copies already convert under 4.1, proving detection works). The re-scan loop
+> should pick both up. Re-scan-on-settings-change also removes the current "from-filter needs a page
+> refresh" step.
 
 - [ ] Dynamic re-scan. A MutationObserver with a 1–2s throttle converts newly added prices off the
   cached table, with no refetch and no double-convert.

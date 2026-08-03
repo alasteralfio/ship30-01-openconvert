@@ -18,3 +18,31 @@ export type Response = RateCache | null;
 export function sendMessage(request: Request): Promise<Response> {
   return browser.runtime.sendMessage(request) as Promise<Response>;
 }
+
+// --- Popup → content-script channel (a different transport: tabs.sendMessage) ---
+// Used by the popup to read the active page's detected-currency stats for the
+// source auto-detect (overview.md > Core A). The content script answers these.
+
+/** Requests the popup sends to a tab's content script. */
+export type ContentRequest = { type: 'getDominantCurrency' };
+
+/** The content script's per-page currency stats. */
+export interface DominantCurrencyReport {
+  /** ISO code making up >50% of detected prices, else null. */
+  dominant: string | null;
+  /** ISO code → count of prices detected on the page. */
+  tally: Record<string, number>;
+}
+
+export type ContentResponse = DominantCurrencyReport;
+
+/**
+ * Send a typed request to a tab's content script. Resolves `undefined` if no
+ * content script is listening (e.g. a chrome:// page or a tab not yet scanned).
+ */
+export function sendToContent(
+  tabId: number,
+  request: ContentRequest,
+): Promise<ContentResponse | undefined> {
+  return browser.tabs.sendMessage(tabId, request) as Promise<ContentResponse | undefined>;
+}

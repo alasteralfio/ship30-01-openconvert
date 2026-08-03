@@ -39,6 +39,12 @@ export interface Settings {
   sourceManuallySet: boolean;
   /** Global on/off kill switch for page auto-conversion (independent of the lists). */
   enabled: boolean;
+  /**
+   * Which SOURCE currencies on a page get rewritten. **Empty = All** (convert
+   * every detected currency). A non-empty list restricts conversion to those
+   * ISO codes. Separate from the popup converter's `source`.
+   */
+  fromFilter: string[];
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -47,6 +53,7 @@ export const DEFAULT_SETTINGS: Settings = {
   target: 'EUR',
   sourceManuallySet: false,
   enabled: true,
+  fromFilter: [],
 };
 
 const RATE_CACHE_KEY = 'rateCache';

@@ -6,11 +6,27 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { LuArrowRightLeft, LuCopy, LuRefreshCw } from 'react-icons/lu';
-import { sendMessage } from '../shared/messaging';
+import browser from 'webextension-polyfill';
+import { sendMessage, sendToContent } from '../shared/messaging';
 import { convert } from '../shared/convert';
 import { getSettings, setSettings as persistSettings } from '../shared/storage';
 import type { RateCache, Settings } from '../shared/storage';
 import CurrencyCombobox from './CurrencyCombobox';
+import FromFilter from './FromFilter';
+
+/**
+ * Source auto-detect: ask the active tab's content script for its dominant
+ * currency and adopt it as the source — but only while the source has never been
+ * set manually (overview.md > Core A). Returns the code to adopt, or null.
+ */
+async function detectPageSource(current: Settings): Promise<string | null> {
+  if (current.sourceManuallySet) return null;
+  const [tab] = await browser.tabs.query({ active: true, currentWindow: true });
+  if (tab?.id === undefined) return null;
+  const report = await sendToContent(tab.id, { type: 'getDominantCurrency' }).catch(() => undefined);
+  const dominant = report?.dominant ?? null;
+  return dominant && dominant !== current.source ? dominant : null;
+}
 
 /** Compact "updated Xh ago" label from a ms-epoch timestamp. */
 function timeAgo(ms: number): string {
@@ -33,7 +49,11 @@ export default function App() {
   useEffect(() => {
     void (async () => {
       const [cache, loaded] = await Promise.all([sendMessage({ type: 'getRates' }), getSettings()]);
-      setSettings(loaded);
+      // Adopt the page's dominant currency as the source unless it's locked.
+      const detected = await detectPageSource(loaded);
+      const effective = detected ? { ...loaded, source: detected } : loaded;
+      if (detected) await persistSettings({ source: detected });
+      setSettings(effective);
       setRates(cache);
       setStatus(cache ? 'ready' : 'no-rates');
     })();
@@ -66,6 +86,13 @@ export default function App() {
     } finally {
       setRefreshing(false);
     }
+  }
+
+  /** Clear the lock and immediately re-adopt the page's dominant currency. */
+  async function resetSourceToAuto(): Promise<void> {
+    if (!settings) return;
+    const detected = await detectPageSource({ ...settings, sourceManuallySet: false });
+    await update({ sourceManuallySet: false, ...(detected ? { source: detected } : {}) });
   }
 
   async function copyResult(): Promise<void> {
@@ -140,6 +167,12 @@ export default function App() {
         onChange={(code) => void update({ target: code })}
       />
 
+      <FromFilter
+        value={settings.fromFilter}
+        codes={codes}
+        onChange={(list) => void update({ fromFilter: list })}
+      />
+
       <div className="oc-result">
         {result === null ? (
           <span>—</span>
@@ -171,7 +204,7 @@ export default function App() {
       </div>
 
       {settings.sourceManuallySet && (
-        <button type="button" onClick={() => void update({ sourceManuallySet: false })}>
+        <button type="button" onClick={() => void resetSourceToAuto()}>
           Reset source to auto-detect
         </button>
       )}

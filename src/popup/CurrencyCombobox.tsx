@@ -7,7 +7,7 @@ import { getCurrencyName } from '../shared/currencies';
 
 interface Props {
   label: string;
-  /** Currently selected ISO code. */
+  /** Currently selected ISO code, or '' for an empty picker (e.g. "add currency"). */
   value: string;
   /** All selectable ISO codes (keys of the cached rate table). */
   codes: string[];
@@ -46,7 +46,7 @@ export default function CurrencyCombobox({ label, value, codes, onChange }: Prop
           role="combobox"
           aria-expanded={open}
           // Show the current selection when closed; the live query while searching.
-          value={open ? query : `${value} — ${getCurrencyName(value)}`}
+          value={open ? query : value ? `${value} — ${getCurrencyName(value)}` : ''}
           placeholder="Search currency"
           onFocus={() => {
             setOpen(true);

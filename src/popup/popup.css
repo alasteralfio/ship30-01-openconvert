@@ -19,10 +19,26 @@
 }
 
 .oc-kill-switch,
-.popup label.oc-kill-switch {
+.popup label.oc-kill-switch,
+.popup label.oc-inline {
   flex-direction: row;
   gap: 6px;
   align-items: center;
+}
+
+.oc-from-filter {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.oc-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
 }
 
 /* Searchable currency picker — the list floats over following content. */
