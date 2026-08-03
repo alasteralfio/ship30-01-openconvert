@@ -1,6 +1,6 @@
-// From-filter control: which SOURCE currencies on a page get rewritten. An empty
-// list means "All". Unchecking "All currencies" restricts to a chosen set built
-// via the combobox. Functional/near-unstyled — Phase 6 owns the visual design.
+// From-filter control: which source currencies on a page get rewritten. An empty
+// list means "All"; unchecking "All currencies" restricts to a chosen set built via
+// the combobox.
 
 import CurrencyCombobox from './CurrencyCombobox';
 

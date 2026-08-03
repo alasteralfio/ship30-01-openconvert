@@ -155,38 +155,81 @@ Phase 6 restyles). Build/lint/test pass clean.
 Test: blacklist a site and prices stop converting; switch to whitelist mode so only whitelisted
 sites convert; flip back and confirm the original blacklist survived; change precision and number
 format and see them applied.
-Completed:
+Completed: 2026-08-03 — verified in Chrome (all checkpoint criteria pass: blacklist stops conversion,
+whitelist restricts it and reverts non-listed sites live, mode flips preserve the opposite list,
+per-site popup + context-menu toggles re-apply with no reload, subdomain coverage holds, and
+precision/number-format changes apply live in both popup and page; Phase-4 regressions clean). Impl:
+`src/shared/sites.ts` holds the pure per-site logic (`normalizeHost`, `hostMatches`, `siteConverts`,
+`setSiteConverts`) with Vitest cases; `blacklist`/`whitelist`/`siteListMode` are independent persisted
+Settings (switching the mode never touches the other list). Host matching is by registrable domain —
+a `example.com` entry also covers `www.`/`shop.example.com`. The content script gates every render and
+the lifecycle on `isActive()` = kill switch AND `siteConverts(host)`, so blacklisting a site reverts
+its prices live (no reload). A `contextMenus` "Toggle price conversion on this site" entry mirrors the
+popup's per-site toggle (both go through `shared/sites`). Formatting: `src/shared/format.ts`
+(`formatNumber` + explicit `NumberFormat` picker, Vitest-tested) applies user precision (0–4dp, 0 =
+nearest whole) and grouping/decimal style (`1,234.56` / `1.234,56` / `1 234,56`) to converted output
+in both the popup and the page. Popup adds `SiteRules.tsx` (mode radios, per-site toggle, active-list
+view) and `FormatSettings.tsx`. Build/lint/test pass clean (35 tests). (Added a Vitest setup that
+stubs `webextension-polyfill` so `storage`-importing modules load under node — see vite.config.ts.)
 
-- [ ] Allow/deny lists. Independent, persisted blacklist and whitelist; the active mode selects
+- [x] Allow/deny lists. Independent, persisted blacklist and whitelist; the active mode selects
   which is enforced; switching modes never clears the other; the content script enforces the rule
   for the current host.
-  - [ ] two persisted lists and the mode switch
-  - [ ] per-host enforcement
-- [ ] Per-site toggle. Add or remove the current host from the active list via the popup, with an
+  - [x] two persisted lists and the mode switch
+  - [x] per-host enforcement
+- [x] Per-site toggle. Add or remove the current host from the active list via the popup, with an
   optional right-click context-menu entry.
-- [ ] Formatting settings. Precision (default 2dp, configurable) and number-format localisation
+- [x] Formatting settings. Precision (default 2dp, configurable) and number-format localisation
   applied to converted output in both the popup and the page.
 
 ---
 
-## Phase 6 — UI sweep, QoL, testing, packaging
+## Phase 6 — UI build, feature build, QoL, testing, packaging
 
-Everything up to here ships functional and near-unstyled. This phase designs the look in one pass,
-then polishes, verifies, and packages.
+Everything up to here ships functional and near-unstyled. This phase builds the full UI in one
+neutral-theme pass — including the shells for the new features — then wires those features up,
+polishes, verifies, and packages.
 
-### Checkpoint 6.1 — UI sweep
-Test: every surface (popup, settings, in-page converted prices and tooltips) shares one clean
-neutral theme; no leftover ad-hoc styling from earlier checkpoints.
+### Checkpoint 6.1 — Full UI build (visual only)
+Design the whole interface in one neutral-theme pass and build every surface, including the new
+features' UI, as static shells with no behaviour wired yet.
+Test: every surface shares one clean neutral theme and renders correctly with placeholder data — the
+existing popup/settings/in-page views plus the new-feature shells — with no leftover ad-hoc styling
+and no logic behind the new controls.
 Completed:
 
 - [ ] Neutral theme. Define the shared visual language (spacing, type, colour, controls) as one
-  small set of tokens and apply it across the popup and settings.
-  - [ ] popup and settings restyled to the neutral theme
+  small set of tokens and apply it across the popup, settings, and in-page output.
+  - [ ] popup, settings, and in-page prices/tooltips/highlight restyled to the neutral theme
   - [ ] strip any placeholder or leftover styles from earlier phases
-- [ ] In-page styling. Apply the same neutral look to converted prices, the hover tooltip, and the
-  highlight style.
+- [ ] New-feature UI shells (visual only, mock data, no logic).
+  - [ ] multi-target view and pinned/favourite pair chips
+  - [ ] inline-math amount field (accepts the expression; no evaluation yet)
+  - [ ] per-site target-override control in the site-rules panel
+  - [ ] select-to-convert tooltip/toast
+  - [ ] page/selection total panel
+  - [ ] table-aware "convert column" affordance
 
-### Checkpoint 6.2 — QoL polish
+### Checkpoint 6.2 — New features (logic + test)
+Wire up every new feature and test each on real pages. One checkpoint, built together.
+Test: select-to-convert shows the right value on arbitrary selected text; page/selection total sums
+correctly across mixed currencies; a table column converts as a unit; the popup's multi-target,
+pinned pairs, and inline math all compute correctly; a per-site target override wins over the global
+target.
+Completed:
+
+- [ ] Select-to-convert. Context-menu entry converts the selected text using the current source and
+  shows the value in the toast/tooltip.
+- [ ] Page / selection total. Sum detected prices (each converted to the target first) into one total.
+- [ ] Table-aware conversion. Detect prices in a table column and convert the column together.
+- [ ] Multi-target view + pinned pairs. Amount shown across several pinned currencies; quick-swap
+  chips persist.
+- [ ] Inline math in the amount field. Evaluate a simple expression before converting.
+- [ ] Per-site target override. Pin a target per host; page and popup honour it over the global target.
+- [ ] PDF invoice support — scope feasibility in Chrome's PDF viewer first, then build only if it's
+  worth the effort (otherwise defer and note why).
+
+### Checkpoint 6.3 — QoL polish
 Test: the common flows feel finished — sensible loading, empty, and error states, clean keyboard
 and focus behaviour, and readable copy throughout.
 Completed:
@@ -195,7 +238,7 @@ Completed:
 - [ ] Interaction polish. Focus order, keyboard access, and hover/active feedback on controls.
 - [ ] Copy pass. Labels, tooltips, and messages read clearly and consistently.
 
-### Checkpoint 6.3 — Testing and cross-browser
+### Checkpoint 6.4 — Testing and cross-browser
 Test: full smoke and regression across the main flows in a clean profile; no raw chrome.* calls
 outside the polyfill.
 Completed:
@@ -204,7 +247,7 @@ Completed:
 - [ ] Cross-browser check. Audit for raw chrome.* behind the polyfill and note any Firefox/Edge
   manifest differences (verify only, no separate ship yet).
 
-### Checkpoint 6.4 — Package and document
+### Checkpoint 6.5 — Package and document
 Test: the packaged build loads unpacked from a clean download.
 Completed:
 

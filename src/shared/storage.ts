@@ -1,8 +1,8 @@
-// Settings + RateCache schema and typed browser.storage.local helpers.
-// This is the single documented shape of what OpenConvert persists. Settings
-// grows as later phases land; in Phase 2 only refreshIntervalHours is wired.
+// Settings + RateCache schema and typed browser.storage.local helpers — the one
+// place that describes everything OpenConvert persists.
 
 import browser from 'webextension-polyfill';
+import type { NumberFormat } from './format';
 
 /** A normalized, USD-anchored exchange-rate table cached in storage.local. */
 export interface RateCache {
@@ -20,21 +20,17 @@ export interface RateCache {
   fetchedAt: number;
 }
 
-/**
- * User settings. Grows as phases land (later: precision, lists, display mode,
- * theme, …). Phase 3 adds the popup converter's persisted state.
- */
+/** Everything the user can configure, persisted in storage.local. */
 export interface Settings {
   /** Hours between scheduled rate refreshes. Default 6. */
   refreshIntervalHours: number;
   /** Popup converter source currency (ISO code). */
   source: string;
-  /** Popup converter + (Phase 4) page target currency (ISO code). */
+  /** Target currency for both the popup converter and page conversion (ISO code). */
   target: string;
   /**
-   * Set the moment the user manually changes the source; once true, per-page
-   * source auto-detect never overrides the source again. A "reset to auto"
-   * control clears it. Auto-detect itself lands with the content script (Phase 4).
+   * Set the moment the user changes the source by hand; once true, per-page
+   * auto-detect never overrides the source again. "Reset to auto" clears it.
    */
   sourceManuallySet: boolean;
   /** Global on/off kill switch for page auto-conversion (independent of the lists). */
@@ -53,6 +49,21 @@ export interface Settings {
   displayMode: 'replace' | 'hover';
   /** Add a subtle marker to converted prices on the page (default off). */
   highlight: boolean;
+  /**
+   * Which per-site list is enforced. `blacklist`: convert everywhere except
+   * listed hosts (default). `whitelist`: convert only on listed hosts. Both lists
+   * persist independently — switching the mode never clears the other list.
+   */
+  siteListMode: 'blacklist' | 'whitelist';
+  /** Hosts to NOT convert on while in blacklist mode. Registrable-domain entries
+   * also cover their subdomains (see shared/sites.ts). */
+  blacklist: string[];
+  /** Hosts to convert on while in whitelist mode (subdomains covered as above). */
+  whitelist: string[];
+  /** Decimal places for converted output. Default 2; 0 = nearest whole. Range 0–4. */
+  precision: number;
+  /** How the converted number's grouping/decimal separators render. See shared/format.ts. */
+  numberFormat: NumberFormat;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -64,6 +75,11 @@ export const DEFAULT_SETTINGS: Settings = {
   fromFilter: [],
   displayMode: 'replace',
   highlight: false,
+  siteListMode: 'blacklist',
+  blacklist: [],
+  whitelist: [],
+  precision: 2,
+  numberFormat: 'comma-dot',
 };
 
 const RATE_CACHE_KEY = 'rateCache';

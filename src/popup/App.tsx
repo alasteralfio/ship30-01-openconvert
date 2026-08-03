@@ -1,23 +1,24 @@
-// Popup root: the quick converter UI (Checkpoint 3.1). Reads/writes settings via
-// browser.storage (helpers in shared/storage) and asks the worker for the cached
-// rate table via typed messages — no direct network here. Every pair converts
-// locally off the one cached USD-anchored table. Functional/near-unstyled; the
-// visual design lands in the Phase 6 sweep.
+// Popup root: the quick converter UI. Reads/writes settings through shared/storage
+// and asks the worker for the cached rate table by message — no network here. Every
+// pair converts locally off the one cached USD-anchored table.
 
 import { useEffect, useMemo, useState } from 'react';
 import { LuArrowRightLeft, LuCopy, LuRefreshCw } from 'react-icons/lu';
 import browser from 'webextension-polyfill';
 import { sendMessage, sendToContent } from '../shared/messaging';
 import { convert } from '../shared/convert';
+import { formatNumber } from '../shared/format';
 import { getSettings, setSettings as persistSettings } from '../shared/storage';
 import type { RateCache, Settings } from '../shared/storage';
 import CurrencyCombobox from './CurrencyCombobox';
 import FromFilter from './FromFilter';
+import SiteRules from './SiteRules';
+import FormatSettings from './FormatSettings';
 
 /**
- * Source auto-detect: ask the active tab's content script for its dominant
- * currency and adopt it as the source — but only while the source has never been
- * set manually (overview.md > Core A). Returns the code to adopt, or null.
+ * Ask the active tab's content script for its dominant currency and adopt it as the
+ * source — but only while the source has never been set by hand. Returns the code to
+ * adopt, or null.
  */
 async function detectPageSource(current: Settings): Promise<string | null> {
   if (current.sourceManuallySet) return null;
@@ -26,6 +27,18 @@ async function detectPageSource(current: Settings): Promise<string | null> {
   const report = await sendToContent(tab.id, { type: 'getDominantCurrency' }).catch(() => undefined);
   const dominant = report?.dominant ?? null;
   return dominant && dominant !== current.source ? dominant : null;
+}
+
+/** Active tab's hostname, or null for a non-web page (chrome://, new tab, …). */
+async function activeTabHost(): Promise<string | null> {
+  const [tab] = await browser.tabs.query({ active: true, currentWindow: true });
+  if (!tab?.url) return null;
+  try {
+    const { protocol, hostname } = new URL(tab.url);
+    return protocol === 'http:' || protocol === 'https:' ? hostname : null;
+  } catch {
+    return null;
+  }
 }
 
 /** Compact "updated Xh ago" label from a ms-epoch timestamp. */
@@ -45,16 +58,22 @@ export default function App() {
   const [status, setStatus] = useState<'loading' | 'ready' | 'no-rates'>('loading');
   const [refreshing, setRefreshing] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [host, setHost] = useState<string | null>(null);
 
   useEffect(() => {
     void (async () => {
-      const [cache, loaded] = await Promise.all([sendMessage({ type: 'getRates' }), getSettings()]);
+      const [cache, loaded, tabHost] = await Promise.all([
+        sendMessage({ type: 'getRates' }),
+        getSettings(),
+        activeTabHost(),
+      ]);
       // Adopt the page's dominant currency as the source unless it's locked.
       const detected = await detectPageSource(loaded);
       const effective = detected ? { ...loaded, source: detected } : loaded;
       if (detected) await persistSettings({ source: detected });
       setSettings(effective);
       setRates(cache);
+      setHost(tabHost);
       setStatus(cache ? 'ready' : 'no-rates');
     })();
   }, []);
@@ -71,11 +90,17 @@ export default function App() {
   const result = useMemo(() => {
     if (!rates || !settings || amount.trim() === '' || !Number.isFinite(amountNum)) return null;
     try {
-      return convert(amountNum, settings.source, settings.target, rates.rates);
+      return convert(amountNum, settings.source, settings.target, rates.rates, settings.precision);
     } catch {
       return null;
     }
   }, [rates, settings, amount, amountNum]);
+
+  // Display/copy value, formatted with the user's precision + number format.
+  const formattedResult = useMemo(
+    () => (result === null || !settings ? null : formatNumber(result, settings.numberFormat, settings.precision)),
+    [result, settings],
+  );
 
   async function refresh(): Promise<void> {
     setRefreshing(true);
@@ -96,8 +121,8 @@ export default function App() {
   }
 
   async function copyResult(): Promise<void> {
-    if (result === null) return;
-    await navigator.clipboard.writeText(String(result));
+    if (formattedResult === null) return;
+    await navigator.clipboard.writeText(formattedResult);
     setCopied(true);
     setTimeout(() => setCopied(false), 1200);
   }
@@ -173,6 +198,10 @@ export default function App() {
         onChange={(list) => void update({ fromFilter: list })}
       />
 
+      <SiteRules settings={settings} host={host} onChange={(patch) => void update(patch)} />
+
+      <FormatSettings settings={settings} onChange={(patch) => void update(patch)} />
+
       <fieldset className="oc-display">
         <legend>Page display</legend>
         <label className="oc-inline">
@@ -204,18 +233,18 @@ export default function App() {
       </fieldset>
 
       <div className="oc-result">
-        {result === null ? (
+        {formattedResult === null ? (
           <span>—</span>
         ) : (
           <span>
-            {amountNum} {settings.source} = {result} {settings.target}
+            {amountNum} {settings.source} = {formattedResult} {settings.target}
           </span>
         )}
         <button
           type="button"
           aria-label="Copy converted value"
           onClick={() => void copyResult()}
-          disabled={result === null}
+          disabled={formattedResult === null}
         >
           <LuCopy /> {copied ? 'Copied' : 'Copy'}
         </button>

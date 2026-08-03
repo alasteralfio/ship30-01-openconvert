@@ -1,9 +1,9 @@
-// Content script: scan the DOM for prices, request the cached rate table from the
-// worker once, convert locally, rewrite matches in place, and keep up with dynamic
-// pages via a throttled MutationObserver. Every detected price is tracked (its
-// original stashed in `data-oc-original`) so target/from-filter/display-mode changes
-// re-apply live — driven by `browser.storage.onChanged`, no page reload. Reports the
-// page's dominant currency for the popup's source auto-detect. See overview.md > Core B.
+// Scans the page for prices, converts them against the worker's cached rate table,
+// and rewrites them in place. Each tracked price keeps its original text in
+// data-oc-original, so changing the target, from-filter, or display mode re-renders
+// live (via storage.onChanged) with no reload. A throttled MutationObserver handles
+// dynamic pages, and we report the page's dominant currency so the popup can
+// auto-pick the source.
 
 import browser from 'webextension-polyfill';
 import { sendMessage } from '../shared/messaging';
@@ -11,6 +11,8 @@ import type { ContentRequest, DominantCurrencyReport } from '../shared/messaging
 import { getSettings, DEFAULT_SETTINGS } from '../shared/storage';
 import type { RateCache, Settings } from '../shared/storage';
 import { convert } from '../shared/convert';
+import { formatNumber } from '../shared/format';
+import { siteConverts } from '../shared/sites';
 import { detectPrices } from './detect';
 import type { DetectionContext, PriceMatch } from './detect';
 
@@ -46,6 +48,15 @@ function passesFilter(currency: string): boolean {
   return settings.fromFilter.length === 0 || settings.fromFilter.includes(currency);
 }
 
+/**
+ * Whether conversion should run here right now: the global kill switch AND the
+ * per-site allow/deny rule for this host. Checked in the render path (so blacklisting
+ * reverts live) as well as the lifecycle gates.
+ */
+function isActive(): boolean {
+  return settings.enabled && siteConverts(location.hostname, settings);
+}
+
 // --- Rendering (single source of truth for how a tracked price looks) -----------
 
 /**
@@ -58,7 +69,7 @@ function applyRender(el: HTMLElement): void {
   if (original === undefined) return;
   const m = detectPrices(original, ctx)[0];
   const value =
-    m && settings.enabled && passesFilter(m.currency) && m.currency !== settings.target
+    m && isActive() && passesFilter(m.currency) && m.currency !== settings.target
       ? safeConvert(m, settings.target)
       : null;
 
@@ -69,7 +80,7 @@ function applyRender(el: HTMLElement): void {
     return;
   }
 
-  const converted = `${value.toFixed(2)} ${settings.target}`;
+  const converted = `${formatNumber(value, settings.numberFormat, settings.precision)} ${settings.target}`;
   if (settings.displayMode === 'hover') {
     el.textContent = original; // original stays visible
     el.title = converted; // converted revealed on hover
@@ -83,7 +94,7 @@ function applyRender(el: HTMLElement): void {
 function safeConvert(m: PriceMatch, target: string): number | null {
   if (!rates) return null;
   try {
-    return convert(m.amount, m.currency, target, rates.rates);
+    return convert(m.amount, m.currency, target, rates.rates, settings.precision);
   } catch {
     return null; // currency missing from the cached table
   }
@@ -241,6 +252,9 @@ function flush(): void {
   flushTimer = undefined;
   const roots = [...pendingRoots];
   pendingRoots.clear();
+  // The page may have been disabled (kill switch / blacklist) since this batch was
+  // queued; if so, drop it rather than mutate a page we shouldn't be touching.
+  if (!isActive()) return;
   observer.disconnect();
   for (const root of roots) {
     if (!root.isConnected || root.closest(`[${CONVERTED_ATTR}]`)) continue;
@@ -267,7 +281,7 @@ browser.runtime.onMessage.addListener(
   },
 );
 
-// --- Highlight style (functional placeholder; Phase 6 defines the real look) ----
+// --- Highlight style (placeholder look) -----------------------------------------
 
 function injectHighlightStyle(): void {
   if (document.getElementById('oc-style')) return;
@@ -297,31 +311,33 @@ async function start(): Promise<void> {
 }
 
 // Re-apply live when settings change (target, from-filter, display mode, highlight,
-// kill switch). Enabling from cold triggers the first scan.
+// kill switch, site rules, precision, number format). Becoming active from cold
+// (kill switch on, or this host newly allowed) triggers the first scan.
 browser.storage.onChanged.addListener((changes, area) => {
   if (area !== 'local' || !changes.settings) return;
-  const wasEnabled = settings.enabled;
+  const wasActive = isActive();
   settings = { ...DEFAULT_SETTINGS, ...(changes.settings.newValue as Partial<Settings>) };
   ctx.fromFilter = settings.fromFilter;
-  if (settings.enabled && !scanned) {
+  const nowActive = isActive();
+  if (nowActive && !scanned) {
     void start();
     return;
   }
-  if (!wasEnabled && settings.enabled && scanned) {
+  if (!wasActive && nowActive && scanned) {
     observer.disconnect();
-    scan(document.body); // catch prices that appeared while disabled
+    scan(document.body); // catch prices that appeared while inactive
     reapplyAll();
     observe();
     return;
   }
   observer.disconnect();
-  reapplyAll();
-  observe();
+  reapplyAll(); // revert to originals if now inactive, otherwise re-render with the new settings
+  if (nowActive) observe(); // stop watching a page we're no longer converting
 });
 
 async function init(): Promise<void> {
   settings = await getSettings();
-  if (settings.enabled) await start();
+  if (isActive()) await start();
 }
 
 void init();

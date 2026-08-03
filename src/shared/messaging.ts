@@ -1,5 +1,5 @@
-// Typed message contract between popup, content script, and worker. Popup and
-// content send requests; the worker responds. See overview.md > Architecture.
+// Typed message contract between the popup, content script, and worker. The popup
+// and content script send requests; the worker responds.
 
 import browser from 'webextension-polyfill';
 import type { RateCache } from './storage';
@@ -20,8 +20,8 @@ export function sendMessage(request: Request): Promise<Response> {
 }
 
 // --- Popup → content-script channel (a different transport: tabs.sendMessage) ---
-// Used by the popup to read the active page's detected-currency stats for the
-// source auto-detect (overview.md > Core A). The content script answers these.
+// Lets the popup read the active page's detected-currency stats for source
+// auto-detect. The content script answers these.
 
 /** Requests the popup sends to a tab's content script. */
 export type ContentRequest = { type: 'getDominantCurrency' };

@@ -1,7 +1,7 @@
 ﻿// Price + currency detection: symbol/ISO-code matching, number parsing across
 // common thousand/decimal formats, and ambiguous-symbol resolution
 // (qualifier > single-currency from-filter > TLD/lang heuristic > documented default).
-// Pure functions over a string + context — no DOM. See overview.md > Core B.
+// Pure functions over a string plus some page context — no DOM access.
 
 import { AMBIGUOUS_SYMBOLS, SYMBOL_DEFAULTS } from '../shared/currencies';
 
@@ -120,6 +120,9 @@ const PATTERN = [
   `(?<num4>${NUM})[\\s\\u00A0]?(?<![A-Za-z])(?<code2>[A-Z]{3})(?![A-Za-z])`,
 ].join('|');
 
+// Compiled once and reused; detectPrices resets lastIndex before each scan.
+const PRICE_RE = new RegExp(PATTERN, 'g');
+
 /** Parse a formatted number, deciding which separator is the decimal point. */
 export function parseAmount(raw: string): number | null {
   // Drop everything but digits and the two separators; this also removes
@@ -159,8 +162,8 @@ function heuristic(symbol: string, host: string, lang: string): string | null {
   const l = lang.toLowerCase();
   if (symbol === '$') {
     if (host.endsWith('.ca')) return 'CAD';
-    if (host.endsWith('.au') || host.endsWith('.com.au')) return 'AUD';
-    if (host.endsWith('.nz') || host.endsWith('.co.nz')) return 'NZD';
+    if (host.endsWith('.au')) return 'AUD';
+    if (host.endsWith('.nz')) return 'NZD';
     if (host.endsWith('.mx')) return 'MXN';
     if (host.endsWith('.sg')) return 'SGD';
     if (host.endsWith('.hk')) return 'HKD';
@@ -199,10 +202,10 @@ function resolveSymbol(raw: string, ctx: DetectionContext): string | null {
 
 /** Find every currency price in `text`, left to right and non-overlapping. */
 export function detectPrices(text: string, ctx: DetectionContext): PriceMatch[] {
-  const re = new RegExp(PATTERN, 'g');
+  PRICE_RE.lastIndex = 0;
   const matches: PriceMatch[] = [];
   let m: RegExpExecArray | null;
-  while ((m = re.exec(text)) !== null) {
+  while ((m = PRICE_RE.exec(text)) !== null) {
     const g = m.groups;
     if (!g) continue;
     const rawNum = g.num1 ?? g.num2 ?? g.num3 ?? g.num4;

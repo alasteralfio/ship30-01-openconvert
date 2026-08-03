@@ -1,8 +1,7 @@
-// Currency metadata. OpenConvert supports every ISO code the rate provider
-// returns, so there is no 160-row table to maintain: display names and number
-// formatting come from the runtime Intl API. Only the ambiguous/common *symbols*
-// are hand-authored, because price detection (Phase 4) must map a glyph back to
-// candidate codes. See overview.md > Core B and > Data & APIs.
+// Currency metadata. We support every ISO code the rate provider returns, so there's
+// no 160-row table to maintain — display names come from the runtime Intl API. Only
+// the shared/ambiguous symbols are hand-authored, since price detection has to map a
+// glyph back to its candidate codes.
 
 /** Human-readable name for a code, e.g. 'USD' → 'US Dollar'. Falls back to the code. */
 export function getCurrencyName(code: string, locale = 'en'): string {
@@ -28,10 +27,9 @@ export function getCurrencySymbol(code: string, locale = 'en'): string {
 }
 
 /**
- * Glyphs shared by several currencies, each listing candidate codes in priority
- * order (first = the documented fallback default). Phase 4 detection combines
- * this with explicit qualifiers (US$, CA$…) and the page's TLD/lang to resolve
- * which one a given price is in. See overview.md > Core B > Ambiguous-symbol resolution.
+ * Glyphs shared by several currencies, listing candidates in priority order (first =
+ * fallback default). Detection combines this with explicit qualifiers (US$, CA$…) and
+ * the page's TLD/lang to decide which one a given price is in.
  */
 export const AMBIGUOUS_SYMBOLS: Readonly<Record<string, readonly string[]>> = {
   $: ['USD', 'CAD', 'AUD', 'NZD', 'HKD', 'SGD', 'MXN'],

@@ -16,5 +16,8 @@ export default defineConfig({
   test: {
     environment: 'node',
     include: ['src/**/*.test.ts'],
+    // Stub webextension-polyfill so modules that import `browser` (storage, …) can
+    // be pulled into pure-logic tests without a real extension runtime.
+    setupFiles: ['./src/test-setup.ts'],
   },
 });

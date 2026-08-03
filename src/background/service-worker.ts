@@ -1,13 +1,13 @@
-// Service worker: the only network caller. Owns the RateProvider abstraction,
-// fetches and caches the single USD-anchored rate table, runs the browser.alarms
-// refresh, and (from Phase 2.2) answers messages. No DOM logic.
-// See overview.md > Architecture.
+// Service worker: the only place that touches the network. Fetches and caches the
+// single USD-anchored rate table, keeps it fresh on an alarm, and answers rate
+// requests from the popup and content script.
 
 import browser from 'webextension-polyfill';
 import { openErApiProvider, fetchRatesWithFailover } from '../shared/providers';
 import type { NormalizedRates } from '../shared/providers';
-import { getRateCache, setRateCache, getSettings } from '../shared/storage';
+import { getRateCache, setRateCache, getSettings, setSettings } from '../shared/storage';
 import type { RateCache } from '../shared/storage';
+import { siteConverts, setSiteConverts } from '../shared/sites';
 import type { Request } from '../shared/messaging';
 
 /** OpenConvert always anchors its one cached table to USD; every pair converts locally. */
@@ -72,8 +72,48 @@ async function ensureRefreshAlarm(): Promise<void> {
   });
 }
 
+// --- Per-site toggle context menu -----------------------------------------------
+// Right-click entry that flips whether the current host converts, mirroring the
+// popup toggle. Both route through shared/sites, and the content script picks the
+// change up live via storage.onChanged — no reload needed. Created once on install
+// (menu items survive SW restarts).
+
+const TOGGLE_SITE_MENU = 'oc-toggle-site';
+
+async function setupContextMenu(): Promise<void> {
+  await browser.contextMenus.removeAll();
+  browser.contextMenus.create({
+    id: TOGGLE_SITE_MENU,
+    title: 'Toggle price conversion on this site',
+    contexts: ['page', 'selection', 'link'],
+  });
+}
+
+/** Extract a hostname from a page URL, or null for non-http(s) pages (chrome://, …). */
+function hostFromUrl(url: string | undefined): string | null {
+  if (!url) return null;
+  try {
+    const { protocol, hostname } = new URL(url);
+    return protocol === 'http:' || protocol === 'https:' ? hostname : null;
+  } catch {
+    return null;
+  }
+}
+
+browser.contextMenus.onClicked.addListener((info, tab) => {
+  if (info.menuItemId !== TOGGLE_SITE_MENU) return;
+  const host = hostFromUrl(info.pageUrl ?? tab?.url);
+  if (!host) return;
+  void (async () => {
+    const settings = await getSettings();
+    const patch = setSiteConverts(settings, host, !siteConverts(host, settings));
+    if (Object.keys(patch).length > 0) await setSettings(patch);
+  })();
+});
+
 browser.runtime.onInstalled.addListener(() => {
   void (async () => {
+    await setupContextMenu();
     await ensureRefreshAlarm();
     try {
       await refreshRates();
@@ -94,9 +134,8 @@ browser.alarms.onAlarm.addListener((alarm) => {
   );
 });
 
-// Typed message contract (Checkpoint 2.2): popup and content script request the
-// cached table here; the worker never exposes network calls to them directly.
-// Returning a Promise sends its resolved value back as the response.
+// Popup and content script ask for the cached table here instead of fetching it
+// themselves. Returning a Promise sends its resolved value back as the response.
 browser.runtime.onMessage.addListener((message: unknown): Promise<RateCache | null> | undefined => {
   const request = message as Request;
   switch (request.type) {
@@ -111,14 +150,3 @@ browser.runtime.onMessage.addListener((message: unknown): Promise<RateCache | nu
       return undefined;
   }
 });
-
-// Console testing hook for Checkpoint 2.1. From the service-worker console:
-//   await self.openconvert.refresh()   — force a manual refresh
-//   await self.openconvert.getCache()  — inspect the stored table
-//   await self.openconvert.getRates()  — cache, fetching first if empty
-// (Superseded by the typed messaging contract in Checkpoint 2.2.)
-(globalThis as unknown as { openconvert: unknown }).openconvert = {
-  refresh: refreshRates,
-  getCache: getRateCache,
-  getRates,
-};

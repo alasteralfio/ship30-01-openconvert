@@ -1,6 +1,6 @@
-// Pure conversion math — no I/O. The worker caches one USD-anchored table and
-// every pair converts locally as A→B = amount * rates[B] / rates[A], so changing
-// currencies never needs a new fetch. See overview.md > Rate-limit strategy.
+// Pure conversion math — no I/O. The worker caches one USD-anchored table and every
+// pair converts locally as A→B = amount * rates[B] / rates[A], so switching
+// currencies never triggers a fetch.
 
 import type { RateCache } from './storage';
 

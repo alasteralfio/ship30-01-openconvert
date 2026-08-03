@@ -1,6 +1,6 @@
-// RateProvider interface plus implementations: open.er-api (primary) and
+// RateProvider interface plus the two implementations: open.er-api (primary) and
 // Frankfurter (fallback). Each normalises to { base, rates, updatedAt, nextUpdate }
-// so providers are drop-in swappable. See overview.md > Data & APIs.
+// so a new source is a drop-in.
 
 /** The normalized rate table every provider returns. USD-anchored in practice. */
 export interface NormalizedRates {

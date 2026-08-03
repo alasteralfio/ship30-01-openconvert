@@ -1,8 +1,7 @@
-/* Popup styles. Single neutral theme (no light/dark switching); the real visual
-   design is defined in the Phase 6 UI sweep. Until then this is the minimum
-   structure needed for the converter to function — notably the combobox's
-   floating list, which needs positioning and an opaque background to be usable.
-   Don't grow this into a bespoke theme before Phase 6. */
+/* Popup styles. One neutral theme, no light/dark switching. Kept intentionally
+   minimal for now — just enough structure for the converter to work, notably the
+   combobox's floating list (needs positioning and an opaque background). The full
+   visual design comes later; don't grow this into a bespoke theme yet. */
 
 .popup {
   min-width: 260px;

@@ -1,6 +1,5 @@
-// Searchable currency picker used for both the source and target selectors.
-// Filters the codes from the cached rate table by ISO code or display name.
-// Functional/near-unstyled — visual design lands in the Phase 6 sweep.
+// Searchable currency picker used for both the source and target selectors. Filters
+// the codes from the cached rate table by ISO code or display name.
 
 import { useMemo, useState } from 'react';
 import { getCurrencyName } from '../shared/currencies';
