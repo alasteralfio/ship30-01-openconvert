@@ -55,9 +55,9 @@ files now have unique basenames; see CLAUDE.md > Architecture rules.)
 ### Checkpoint 2.2 — Conversion works end to end
 Test: from the popup, request rates through the worker and convert a sample amount; the result
 matches a manual calculation.
-Completed: 2026-08-03 — code complete; `npm test` (6 convert() cases), `npm run build`, and
-`npm run lint` all pass clean. Popup-console round-trip (`openconvert.getRates()` → `openconvert.convert(...)`)
-is the manual step to run on your machine.
+Completed: 2026-08-03 — verified: `npm test` (6 convert() cases), `npm run build`, and `npm run lint`
+pass clean, and the popup-console round-trip (`openconvert.getRates()` → `openconvert.convert(...)`
+through the worker's typed messages) returns values matching a manual calculation.
 
 - [x] Shared conversion and currency data.
   - [x] currencies.ts (codes, symbols, locales) — Intl-derived names/symbols + hand-authored
@@ -74,16 +74,22 @@ is the manual step to run on your machine.
 ### Checkpoint 3.1 — Popup converts live
 Test: open the popup, convert several pairs live with no button press, swap source and target, copy
 the result, toggle the kill switch, and read the freshness label.
-Completed:
+Completed: 2026-08-03 — the popup renders a live converter: searchable source/target comboboxes
+(filter the cached table's codes by ISO code or name), an amount input that converts on every
+keystroke via `convert()`, a swap control, copy-value, a manual refresh, an "updated Xh ago"
+freshness label, and a persisted kill switch. Source/target and the `sourceManuallySet` lock (plus
+a reset-to-auto control) persist to `storage.local`. Build/lint/test pass clean. Note: the
+`sourceManuallySet` *state machine* is complete, but the per-page auto-detect that would flip the
+source lands with the content script in Phase 4 — until then it's a documented no-op.
 
-- [ ] Converter UI. Source and target selectors with an amount input that converts live off the
+- [x] Converter UI. Source and target selectors with an amount input that converts live off the
   cached table.
-  - [ ] selectors and live conversion
-  - [ ] swap control and copy-value button
-- [ ] Status and controls. Rate-freshness label ("updated Xh ago"), a manual refresh button, and a
+  - [x] selectors and live conversion
+  - [x] swap control and copy-value button
+- [x] Status and controls. Rate-freshness label ("updated Xh ago"), a manual refresh button, and a
   global on/off kill switch persisted to storage.
-- [ ] Source state and lock. Persist source and target; a manual source change sets the persisted
-  sourceManuallySet flag; a reset-to-auto control clears it.
+- [x] Source state and lock. Persist source and target; a manual source change sets the persisted
+  sourceManuallySet flag; a reset-to-auto control clears it. (Auto-detect *consumer* is Phase 4.)
 
 ---
 

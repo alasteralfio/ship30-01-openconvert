@@ -21,16 +21,32 @@ export interface RateCache {
 }
 
 /**
- * User settings. Only `refreshIntervalHours` is used in Phase 2; the popup and
- * later phases extend this object (precision, lists, display mode, theme, …).
+ * User settings. Grows as phases land (later: precision, lists, display mode,
+ * theme, …). Phase 3 adds the popup converter's persisted state.
  */
 export interface Settings {
   /** Hours between scheduled rate refreshes. Default 6. */
   refreshIntervalHours: number;
+  /** Popup converter source currency (ISO code). */
+  source: string;
+  /** Popup converter + (Phase 4) page target currency (ISO code). */
+  target: string;
+  /**
+   * Set the moment the user manually changes the source; once true, per-page
+   * source auto-detect never overrides the source again. A "reset to auto"
+   * control clears it. Auto-detect itself lands with the content script (Phase 4).
+   */
+  sourceManuallySet: boolean;
+  /** Global on/off kill switch for page auto-conversion (independent of the lists). */
+  enabled: boolean;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
   refreshIntervalHours: 6,
+  source: 'USD',
+  target: 'EUR',
+  sourceManuallySet: false,
+  enabled: true,
 };
 
 const RATE_CACHE_KEY = 'rateCache';

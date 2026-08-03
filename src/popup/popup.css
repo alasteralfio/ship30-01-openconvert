@@ -1,7 +1,58 @@
-/* Popup styles. Single neutral theme (no light/dark switching); designed in the Phase 6 UI sweep. */
+/* Popup styles. Single neutral theme (no light/dark switching); the real visual
+   design is defined in the Phase 6 UI sweep. Until then this is the minimum
+   structure needed for the converter to function — notably the combobox's
+   floating list, which needs positioning and an opaque background to be usable.
+   Don't grow this into a bespoke theme before Phase 6. */
 
 .popup {
   min-width: 260px;
   padding: 12px;
   font-family: system-ui, sans-serif;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.popup label {
+  display: flex;
+  flex-direction: column;
+}
+
+.oc-kill-switch,
+.popup label.oc-kill-switch {
+  flex-direction: row;
+  gap: 6px;
+  align-items: center;
+}
+
+/* Searchable currency picker — the list floats over following content. */
+.oc-combobox {
+  position: relative;
+}
+
+.oc-combobox-list {
+  position: absolute;
+  z-index: 1;
+  left: 0;
+  right: 0;
+  max-height: 200px;
+  overflow-y: auto;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border: 1px solid #ccc;
+  background: #fff;
+}
+
+.oc-combobox-list li {
+  padding: 2px 6px;
+  cursor: pointer;
+}
+
+.oc-result,
+.oc-status {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  justify-content: space-between;
 }
