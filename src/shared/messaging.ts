@@ -26,8 +26,6 @@ export function sendMessage(request: Request): Promise<Response> {
 /** Requests the popup or worker sends to a tab's content script. */
 export type ContentRequest =
   | { type: 'getDominantCurrency' }
-  // Show the in-page UI preview (the mock toast/total/column cards) on the page.
-  | { type: 'previewShells' }
   // Convert a right-clicked text selection and show the result in a toast.
   | { type: 'convertSelection'; text: string }
   // Total the prices on the page, or within the current selection, into the target.

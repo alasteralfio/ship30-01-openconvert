@@ -16,7 +16,6 @@ import { evaluateExpression } from '../shared/expr';
 import { siteConverts, siteTarget } from '../shared/sites';
 import { detectPrices } from './detect';
 import type { DetectionContext, PriceMatch } from './detect';
-import { renderShellPreview } from './shells';
 import { showOverlayCard } from './overlay';
 
 const CONVERTED_ATTR = 'data-oc-converted'; // marks a tracked price (never re-detected)
@@ -456,9 +455,6 @@ browser.runtime.onMessage.addListener(
     switch (req?.type) {
       case 'getDominantCurrency':
         return Promise.resolve({ dominant: dominantCurrency(), tally: { ...pageTally } });
-      case 'previewShells':
-        renderShellPreview();
-        return Promise.resolve({ ok: true });
       case 'convertSelection':
         return ensureReady().then((ok) => {
           if (ok) handleConvertSelection(req.text);

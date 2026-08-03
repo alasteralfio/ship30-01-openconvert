@@ -46,6 +46,8 @@ export default function ConvertTab({
   const [amount, setAmount] = useState('1');
   // A plain number, an evaluated expression, or null when the field can't be read.
   const amountNum = evaluateExpression(amount);
+  // Non-empty but unreadable — hint at it inline instead of a silent dash.
+  const amountInvalid = amount.trim() !== '' && amountNum === null;
 
   /** Convert the current amount into `target`, formatted, or null if it can't. */
   function resultIn(target: string): string | null {
@@ -112,6 +114,16 @@ export default function ConvertTab({
               <MyLocationIcon fontSize="small" />
             </IconButton>
           </Tooltip>
+          <Tooltip title={pairPinned ? 'Unpin this pair' : 'Pin this pair'}>
+            <IconButton
+              aria-label={pairPinned ? 'Unpin current pair' : 'Pin current pair'}
+              size="small"
+              color={pairPinned ? 'primary' : 'default'}
+              onClick={togglePinCurrentPair}
+            >
+              {pairPinned ? <StarIcon fontSize="small" /> : <StarBorderIcon fontSize="small" />}
+            </IconButton>
+          </Tooltip>
           <Tooltip title="Rates refresh on a schedule (about every 6 hours), not live.">
             <InfoOutlinedIcon fontSize="small" color="disabled" />
           </Tooltip>
@@ -122,35 +134,31 @@ export default function ConvertTab({
         <PdfScan url={pdfUrl} rates={rates} settings={settings} target={settings.target} />
       )}
 
-      {/* Quick-swap chips for the saved pairs, plus a pin toggle for the current one */}
-      <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75, alignItems: 'center' }}>
-        {settings.pinnedPairs.map(({ from, to }) => (
-          <Chip
-            key={`${from}-${to}`}
-            label={`${from} → ${to}`}
-            size="small"
-            variant="outlined"
-            onClick={() => update({ source: from, target: to, sourceManuallySet: true })}
-            onDelete={() =>
-              update({
-                pinnedPairs: settings.pinnedPairs.filter(
-                  (p) => !(p.from === from && p.to === to),
-                ),
-              })
-            }
-          />
-        ))}
-        <Tooltip title={pairPinned ? 'Unpin this pair' : 'Pin the current pair'}>
-          <Chip
-            icon={pairPinned ? <StarIcon /> : <StarBorderIcon />}
-            label="Pin"
-            size="small"
-            variant={pairPinned ? 'filled' : 'outlined'}
-            color={pairPinned ? 'primary' : 'default'}
-            onClick={togglePinCurrentPair}
-          />
-        </Tooltip>
-      </Box>
+      {/* Saved pairs — one tap loads a pair; the active one is highlighted */}
+      {settings.pinnedPairs.length > 0 && (
+        <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75 }}>
+          {settings.pinnedPairs.map(({ from, to }) => {
+            const active = from === settings.source && to === settings.target;
+            return (
+              <Chip
+                key={`${from}-${to}`}
+                label={`${from} → ${to}`}
+                size="small"
+                variant={active ? 'filled' : 'outlined'}
+                color={active ? 'primary' : 'default'}
+                onClick={() => update({ source: from, target: to, sourceManuallySet: true })}
+                onDelete={() =>
+                  update({
+                    pinnedPairs: settings.pinnedPairs.filter(
+                      (p) => !(p.from === from && p.to === to),
+                    ),
+                  })
+                }
+              />
+            );
+          })}
+        </Box>
+      )}
 
       <TextField
         label="Amount"
@@ -160,7 +168,12 @@ export default function ConvertTab({
         type="text"
         inputMode="decimal"
         fullWidth
-        helperText="Supports math, e.g. 12 + 4.50"
+        error={amountInvalid}
+        helperText={
+          amountInvalid
+            ? 'Can’t read that yet — keep typing, or check the expression.'
+            : 'Supports math, e.g. 12 + 4.50'
+        }
       />
 
       <CurrencyCombobox
@@ -201,7 +214,10 @@ export default function ConvertTab({
       {/* Primary result */}
       <Box>
         <Typography variant="caption" color="text.secondary">
-          {amountNum === null ? '—' : amountNum} {settings.source} =
+          {amountNum === null
+            ? '—'
+            : formatNumber(amountNum, settings.numberFormat, settings.precision)}{' '}
+          {settings.source} =
         </Typography>
         <Typography variant="h5" sx={{ fontWeight: 700, lineHeight: 1.2 }}>
           {primary === null ? '—' : `${primary} ${settings.target}`}
