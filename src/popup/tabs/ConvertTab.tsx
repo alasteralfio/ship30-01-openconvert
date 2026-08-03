@@ -1,7 +1,7 @@
-// The quick converter. The main source→target conversion is the real, saved one; the
-// rest are previews of features we haven't wired up yet — the pinned-pair chips, the
-// favourite stars, the "supports math" amount field, and the extra target rows. Those
-// only live for the current popup session.
+// The quick converter. The amount field takes a plain number or a small sum like
+// "12 + 4.50". Below the main source→target result, the amount is also shown in each of
+// the extra currencies you've added (the multi-target view), and the pinned pairs at the
+// top are one-tap shortcuts. Both lists are saved in Settings.
 
 import { useMemo, useState } from 'react';
 import Stack from '@mui/material/Stack';
@@ -15,37 +15,41 @@ import Chip from '@mui/material/Chip';
 import MyLocationIcon from '@mui/icons-material/MyLocation';
 import SwapVertIcon from '@mui/icons-material/SwapVert';
 import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined';
+import StarIcon from '@mui/icons-material/Star';
 import StarBorderIcon from '@mui/icons-material/StarBorder';
 import CloseIcon from '@mui/icons-material/Close';
 import { convert } from '../../shared/convert';
 import { formatNumber } from '../../shared/format';
+import { evaluateExpression } from '../../shared/expr';
 import type { RateCache, Settings } from '../../shared/storage';
 import CurrencyCombobox from '../CurrencyCombobox';
+import PdfScan from '../PdfScan';
 
 interface Props {
   rates: RateCache;
   settings: Settings;
   codes: string[];
+  /** Active tab's URL when it's a PDF, else null — shows the PDF price scanner. */
+  pdfUrl: string | null;
   update: (patch: Partial<Settings>) => void;
   resetSourceToAuto: () => void;
 }
 
-// Hard-coded for now; you'll be able to add and remove your own pairs later.
-const PINNED_PAIRS: ReadonlyArray<[string, string]> = [
-  ['USD', 'EUR'],
-  ['GBP', 'JPY'],
-  ['USD', 'SGD'],
-];
-
-export default function ConvertTab({ rates, settings, codes, update, resetSourceToAuto }: Props) {
+export default function ConvertTab({
+  rates,
+  settings,
+  codes,
+  pdfUrl,
+  update,
+  resetSourceToAuto,
+}: Props) {
   const [amount, setAmount] = useState('1');
-  const amountNum = Number(amount);
-  // Extra currencies to show the amount in, alongside the main target. Session-only.
-  const [extraTargets, setExtraTargets] = useState<string[]>([]);
+  // A plain number, an evaluated expression, or null when the field can't be read.
+  const amountNum = evaluateExpression(amount);
 
   /** Convert the current amount into `target`, formatted, or null if it can't. */
   function resultIn(target: string): string | null {
-    if (amount.trim() === '' || !Number.isFinite(amountNum)) return null;
+    if (amountNum === null) return null;
     try {
       const v = convert(amountNum, settings.source, target, rates.rates, settings.precision);
       return formatNumber(v, settings.numberFormat, settings.precision);
@@ -57,8 +61,33 @@ export default function ConvertTab({ rates, settings, codes, update, resetSource
   const primary = useMemo(
     () => resultIn(settings.target),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [rates, settings, amount, amountNum],
+    [rates, settings, amountNum],
   );
+
+  const addMultiTarget = (code: string) => {
+    if (!settings.multiTargets.includes(code)) {
+      update({ multiTargets: [...settings.multiTargets, code] });
+    }
+  };
+  const removeMultiTarget = (code: string) => {
+    update({ multiTargets: settings.multiTargets.filter((c) => c !== code) });
+  };
+
+  // Extra currencies shown together, minus the main target (already the big result).
+  const multiTargets = settings.multiTargets.filter((c) => c !== settings.target);
+
+  const pairPinned = settings.pinnedPairs.some(
+    (p) => p.from === settings.source && p.to === settings.target,
+  );
+  const togglePinCurrentPair = () => {
+    update({
+      pinnedPairs: pairPinned
+        ? settings.pinnedPairs.filter(
+            (p) => !(p.from === settings.source && p.to === settings.target),
+          )
+        : [...settings.pinnedPairs, { from: settings.source, to: settings.target }],
+    });
+  };
 
   return (
     <Stack spacing={1.5}>
@@ -89,24 +118,36 @@ export default function ConvertTab({ rates, settings, codes, update, resetSource
         </Stack>
       </Stack>
 
-      {/* Quick-swap chips for common pairs */}
+      {pdfUrl && (
+        <PdfScan url={pdfUrl} rates={rates} settings={settings} target={settings.target} />
+      )}
+
+      {/* Quick-swap chips for the saved pairs, plus a pin toggle for the current one */}
       <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75, alignItems: 'center' }}>
-        {PINNED_PAIRS.map(([from, to]) => (
+        {settings.pinnedPairs.map(({ from, to }) => (
           <Chip
             key={`${from}-${to}`}
             label={`${from} → ${to}`}
             size="small"
             variant="outlined"
             onClick={() => update({ source: from, target: to, sourceManuallySet: true })}
+            onDelete={() =>
+              update({
+                pinnedPairs: settings.pinnedPairs.filter(
+                  (p) => !(p.from === from && p.to === to),
+                ),
+              })
+            }
           />
         ))}
-        <Tooltip title="Pin the current pair (coming soon)">
+        <Tooltip title={pairPinned ? 'Unpin this pair' : 'Pin the current pair'}>
           <Chip
-            icon={<StarBorderIcon />}
+            icon={pairPinned ? <StarIcon /> : <StarBorderIcon />}
             label="Pin"
             size="small"
-            variant="outlined"
-            sx={{ opacity: 0.6 }}
+            variant={pairPinned ? 'filled' : 'outlined'}
+            color={pairPinned ? 'primary' : 'default'}
+            onClick={togglePinCurrentPair}
           />
         </Tooltip>
       </Box>
@@ -115,18 +156,17 @@ export default function ConvertTab({ rates, settings, codes, update, resetSource
         label="Amount"
         value={amount}
         onChange={(e) => setAmount(e.target.value)}
-        // Takes a plain number or a math expression; for now only plain numbers convert.
+        // Takes a plain number or a math expression (see shared/expr).
         type="text"
         inputMode="decimal"
         fullWidth
-        helperText="Supports math, e.g. 12 + 4.50 (evaluation coming soon)"
+        helperText="Supports math, e.g. 12 + 4.50"
       />
 
       <CurrencyCombobox
         label="From"
         value={settings.source}
         codes={codes}
-        showFavourite
         // A manual source change permanently locks out per-page auto-detect.
         onChange={(code) => update({ source: code, sourceManuallySet: true })}
       />
@@ -153,7 +193,6 @@ export default function ConvertTab({ rates, settings, codes, update, resetSource
         label="To"
         value={settings.target}
         codes={codes}
-        showFavourite
         onChange={(code) => update({ target: code })}
       />
 
@@ -162,7 +201,7 @@ export default function ConvertTab({ rates, settings, codes, update, resetSource
       {/* Primary result */}
       <Box>
         <Typography variant="caption" color="text.secondary">
-          {Number.isFinite(amountNum) ? amountNum : '—'} {settings.source} =
+          {amountNum === null ? '—' : amountNum} {settings.source} =
         </Typography>
         <Typography variant="h5" sx={{ fontWeight: 700, lineHeight: 1.2 }}>
           {primary === null ? '—' : `${primary} ${settings.target}`}
@@ -170,22 +209,15 @@ export default function ConvertTab({ rates, settings, codes, update, resetSource
       </Box>
 
       {/* The same amount in each extra currency */}
-      {extraTargets.map((code) => {
+      {multiTargets.map((code) => {
         const v = resultIn(code);
         return (
-          <Stack
-            key={code}
-            direction="row"
-            alignItems="center"
-            justifyContent="space-between"
-          >
-            <Typography variant="body2">
-              {v === null ? '—' : `${v} ${code}`}
-            </Typography>
+          <Stack key={code} direction="row" alignItems="center" justifyContent="space-between">
+            <Typography variant="body2">{v === null ? '—' : `${v} ${code}`}</Typography>
             <IconButton
               size="small"
               aria-label={`Remove ${code}`}
-              onClick={() => setExtraTargets((prev) => prev.filter((c) => c !== code))}
+              onClick={() => removeMultiTarget(code)}
             >
               <CloseIcon fontSize="small" />
             </IconButton>
@@ -194,11 +226,13 @@ export default function ConvertTab({ rates, settings, codes, update, resetSource
       })}
 
       <CurrencyCombobox
-        label="Convert to another currency"
+        label="Also convert to"
         value=""
         clearOnSelect
-        codes={codes.filter((c) => c !== settings.target && !extraTargets.includes(c))}
-        onChange={(code) => setExtraTargets((prev) => [...prev, code])}
+        codes={codes.filter(
+          (c) => c !== settings.target && !settings.multiTargets.includes(c),
+        )}
+        onChange={addMultiTarget}
       />
     </Stack>
   );

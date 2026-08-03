@@ -50,20 +50,29 @@ async function activeTabHost(): Promise<string | null> {
   }
 }
 
+/** The active tab's URL if it's a PDF we can try to read, else null. */
+async function activeTabPdfUrl(): Promise<string | null> {
+  const [tab] = await browser.tabs.query({ active: true, currentWindow: true });
+  const url = tab?.url ?? '';
+  return /^https?:\/\//.test(url) && /\.pdf($|[?#])/i.test(url) ? url : null;
+}
+
 export default function App() {
   const [rates, setRates] = useState<RateCache | null>(null);
   const [settings, setSettings] = useState<Settings | null>(null);
   const [status, setStatus] = useState<'loading' | 'ready' | 'no-rates'>('loading');
   const [host, setHost] = useState<string | null>(null);
+  const [pdfUrl, setPdfUrl] = useState<string | null>(null);
   const [tab, setTab] = useState<TabId>('convert');
   const [retrying, setRetrying] = useState(false);
 
   useEffect(() => {
     void (async () => {
-      const [cache, loaded, tabHost] = await Promise.all([
+      const [cache, loaded, tabHost, tabPdfUrl] = await Promise.all([
         sendMessage({ type: 'getRates' }),
         getSettings(),
         activeTabHost(),
+        activeTabPdfUrl(),
       ]);
       // Adopt the page's dominant currency as the source unless it's locked.
       const detected = await detectPageSource(loaded);
@@ -72,6 +81,7 @@ export default function App() {
       setSettings(effective);
       setRates(cache);
       setHost(tabHost);
+      setPdfUrl(tabPdfUrl);
       setStatus(cache ? 'ready' : 'no-rates');
     })();
   }, []);
@@ -150,6 +160,7 @@ export default function App() {
             rates={rates}
             settings={settings}
             codes={codes}
+            pdfUrl={pdfUrl}
             update={update}
             resetSourceToAuto={resetSourceToAuto}
           />

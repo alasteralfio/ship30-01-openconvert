@@ -8,7 +8,7 @@ import type { NormalizedRates } from '../shared/providers';
 import { getRateCache, setRateCache, getSettings, setSettings } from '../shared/storage';
 import type { RateCache } from '../shared/storage';
 import { siteConverts, setSiteConverts } from '../shared/sites';
-import type { Request } from '../shared/messaging';
+import type { Request, ContentRequest } from '../shared/messaging';
 
 /** OpenConvert always anchors its one cached table to USD; every pair converts locally. */
 const BASE = 'USD';
@@ -72,21 +72,51 @@ async function ensureRefreshAlarm(): Promise<void> {
   });
 }
 
-// --- Per-site toggle context menu -----------------------------------------------
-// Right-click entry that flips whether the current host converts, mirroring the
-// popup toggle. Both route through shared/sites, and the content script picks the
-// change up live via storage.onChanged — no reload needed. Created once on install
-// (menu items survive SW restarts).
+// --- Context menus ---------------------------------------------------------------
+// The per-site toggle mirrors the popup (both route through shared/sites); the rest are
+// the right-click features, which the content script actually carries out — the worker
+// only owns the menu API and forwards the click. Created once on install (menu items
+// survive SW restarts) and picked up live via storage.onChanged, so no reload is needed.
 
 const TOGGLE_SITE_MENU = 'oc-toggle-site';
+const CONVERT_SELECTION_MENU = 'oc-convert-selection';
+const TOTAL_PAGE_MENU = 'oc-total-page';
+const TOTAL_SELECTION_MENU = 'oc-total-selection';
+const CONVERT_COLUMN_MENU = 'oc-convert-column';
 
 async function setupContextMenu(): Promise<void> {
   await browser.contextMenus.removeAll();
+  browser.contextMenus.create({
+    id: CONVERT_SELECTION_MENU,
+    title: 'Convert selection with OpenConvert',
+    contexts: ['selection'],
+  });
+  browser.contextMenus.create({
+    id: TOTAL_SELECTION_MENU,
+    title: 'Total prices in selection',
+    contexts: ['selection'],
+  });
+  browser.contextMenus.create({
+    id: TOTAL_PAGE_MENU,
+    title: 'Total prices on this page',
+    contexts: ['page'],
+  });
+  browser.contextMenus.create({
+    id: CONVERT_COLUMN_MENU,
+    title: 'Convert this table column',
+    contexts: ['page'],
+  });
   browser.contextMenus.create({
     id: TOGGLE_SITE_MENU,
     title: 'Toggle price conversion on this site',
     contexts: ['page', 'selection', 'link'],
   });
+}
+
+/** Fire-and-forget a request at a tab's content script (ignores tabs with no listener). */
+function notifyContent(tabId: number | undefined, request: ContentRequest): void {
+  if (tabId === undefined) return;
+  void browser.tabs.sendMessage(tabId, request).catch(() => undefined);
 }
 
 /** Extract a hostname from a page URL, or null for non-http(s) pages (chrome://, …). */
@@ -101,14 +131,30 @@ function hostFromUrl(url: string | undefined): string | null {
 }
 
 browser.contextMenus.onClicked.addListener((info, tab) => {
-  if (info.menuItemId !== TOGGLE_SITE_MENU) return;
-  const host = hostFromUrl(info.pageUrl ?? tab?.url);
-  if (!host) return;
-  void (async () => {
-    const settings = await getSettings();
-    const patch = setSiteConverts(settings, host, !siteConverts(host, settings));
-    if (Object.keys(patch).length > 0) await setSettings(patch);
-  })();
+  switch (info.menuItemId) {
+    case CONVERT_SELECTION_MENU:
+      notifyContent(tab?.id, { type: 'convertSelection', text: info.selectionText ?? '' });
+      return;
+    case TOTAL_SELECTION_MENU:
+      notifyContent(tab?.id, { type: 'selectionTotal' });
+      return;
+    case TOTAL_PAGE_MENU:
+      notifyContent(tab?.id, { type: 'pageTotal' });
+      return;
+    case CONVERT_COLUMN_MENU:
+      notifyContent(tab?.id, { type: 'convertColumn' });
+      return;
+    case TOGGLE_SITE_MENU: {
+      const host = hostFromUrl(info.pageUrl ?? tab?.url);
+      if (!host) return;
+      void (async () => {
+        const settings = await getSettings();
+        const patch = setSiteConverts(settings, host, !siteConverts(host, settings));
+        if (Object.keys(patch).length > 0) await setSettings(patch);
+      })();
+      return;
+    }
+  }
 });
 
 browser.runtime.onInstalled.addListener(() => {

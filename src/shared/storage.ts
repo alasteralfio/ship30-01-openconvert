@@ -60,10 +60,21 @@ export interface Settings {
   blacklist: string[];
   /** Hosts to convert on while in whitelist mode (subdomains covered as above). */
   whitelist: string[];
+  /**
+   * Per-host target-currency overrides (normalized host → ISO code). When a page's host
+   * matches an entry, its prices convert to that target instead of the global one. Keys
+   * match subdomains like the allow/deny lists (see shared/sites.ts).
+   */
+  siteTargets: Record<string, string>;
   /** Decimal places for converted output. Default 2; 0 = nearest whole. Range 0–4. */
   precision: number;
   /** How the converted number's grouping/decimal separators render. See shared/format.ts. */
   numberFormat: NumberFormat;
+  /** Extra target currencies for the converter's multi-target view — the amount is shown
+   *  in each of these alongside the main target. */
+  multiTargets: string[];
+  /** Saved source→target pairs shown as quick-swap chips in the converter. */
+  pinnedPairs: { from: string; to: string }[];
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -78,8 +89,15 @@ export const DEFAULT_SETTINGS: Settings = {
   siteListMode: 'blacklist',
   blacklist: [],
   whitelist: [],
+  siteTargets: {},
   precision: 2,
   numberFormat: 'comma-dot',
+  multiTargets: [],
+  pinnedPairs: [
+    { from: 'USD', to: 'EUR' },
+    { from: 'GBP', to: 'JPY' },
+    { from: 'USD', to: 'SGD' },
+  ],
 };
 
 const RATE_CACHE_KEY = 'rateCache';

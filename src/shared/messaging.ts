@@ -23,11 +23,18 @@ export function sendMessage(request: Request): Promise<Response> {
 // Lets the popup read the active page's detected-currency stats for source
 // auto-detect. The content script answers these.
 
-/** Requests the popup sends to a tab's content script. */
+/** Requests the popup or worker sends to a tab's content script. */
 export type ContentRequest =
   | { type: 'getDominantCurrency' }
   // Show the in-page UI preview (the mock toast/total/column cards) on the page.
-  | { type: 'previewShells' };
+  | { type: 'previewShells' }
+  // Convert a right-clicked text selection and show the result in a toast.
+  | { type: 'convertSelection'; text: string }
+  // Total the prices on the page, or within the current selection, into the target.
+  | { type: 'pageTotal' }
+  | { type: 'selectionTotal' }
+  // Convert (and total) the table column of the last right-clicked cell.
+  | { type: 'convertColumn' };
 
 /** The content script's per-page currency stats. */
 export interface DominantCurrencyReport {

@@ -237,18 +237,36 @@ Test: select-to-convert shows the right value on arbitrary selected text; page/s
 correctly across mixed currencies; a table column converts as a unit; the popup's multi-target,
 pinned pairs, and inline math all compute correctly; a per-site target override wins over the global
 target.
-Completed:
+Completed: 2026-08-03 (built in four chunks; not yet real-page tested by the user — awaiting sign-off).
+**Chunk 1 — Convert-tab logic:** `shared/expr.ts` (recursive-descent evaluator for + − × ÷, parentheses,
+and a leading sign; Vitest-covered) backs the amount field, so "12 + 4.50" converts. `Settings` gained
+`multiTargets` (extra currencies for the multi-target rows, managed by the "Also convert to" picker + the
+row ×) and `pinnedPairs` (quick-swap chips — click to load, × to remove, a Pin toggle for the current
+pair); both persist. (A dropdown favourite-star was built here first but removed on 2026-08-04 as not
+useful, so `CurrencyCombobox` is a plain picker again.) **Chunk 2 — per-site target override:** `shared/sites.ts` gained `siteTarget`/
+`setSiteTarget` (Vitest-covered; subdomain match, most-specific key wins) over a new `Settings.siteTargets`
+map; the content script converts to `effectiveTarget()` (override ?? global) so an override re-applies live,
+and SiteRules wires the picker + a "Use global" reset. **Chunk 3 — in-page interactions:** four context-menu
+items in the worker forward to the content script, which does the work and shows a themed overlay card
+(`content/overlay.ts`): select-to-convert (uses the selection's own currency, or the popup source for a bare
+number), total prices in a selection, total prices on the page (grouped per source currency so mixed pages
+add up), and convert-this-column (finds the right-clicked cell's column, flashes it, totals it). They run
+even when live conversion is off (rates/context loaded on demand). **Chunk 4 — PDF invoice support:**
+Chrome's native PDF viewer doesn't expose text to a content script, so instead the popup reads the PDF with
+PDF.js (`popup/pdf.ts`, dynamically imported so `pdfjs-dist` is a lazy chunk — the main popup bundle is
+unaffected) and lists the converted prices (`popup/PdfScan.tsx`, shown in the Convert tab when the active
+tab is a PDF; fetch runs under `activeTab`). Build/lint/test (45) clean.
 
-- [ ] Select-to-convert. Context-menu entry converts the selected text using the current source and
+- [x] Select-to-convert. Context-menu entry converts the selected text using the current source and
   shows the value in the toast/tooltip.
-- [ ] Page / selection total. Sum detected prices (each converted to the target first) into one total.
-- [ ] Table-aware conversion. Detect prices in a table column and convert the column together.
-- [ ] Multi-target view + pinned pairs. Amount shown across several pinned currencies; quick-swap
+- [x] Page / selection total. Sum detected prices (each converted to the target first) into one total.
+- [x] Table-aware conversion. Detect prices in a table column and convert the column together.
+- [x] Multi-target view + pinned pairs. Amount shown across several pinned currencies; quick-swap
   chips persist.
-- [ ] Inline math in the amount field. Evaluate a simple expression before converting.
-- [ ] Per-site target override. Pin a target per host; page and popup honour it over the global target.
-- [ ] PDF invoice support — scope feasibility in Chrome's PDF viewer first, then build only if it's
-  worth the effort (otherwise defer and note why).
+- [x] Inline math in the amount field. Evaluate a simple expression before converting.
+- [x] Per-site target override. Pin a target per host; page and popup honour it over the global target.
+- [x] PDF invoice support — built via PDF.js text extraction in the popup (Chrome's native viewer can't be
+  edited in place, so prices are listed in the popup rather than rewritten in the PDF).
 
 ### Checkpoint 6.3 — QoL polish
 Test: the common flows feel finished — sensible loading, empty, and error states, clean keyboard

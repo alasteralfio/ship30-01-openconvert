@@ -3,11 +3,11 @@
 // list edits go through shared/sites so the popup, content script, and context menu stay
 // in agreement. The two lists are shown side by side, the inactive one greyed.
 
-import { useState } from 'react';
 import Card from '@mui/material/Card';
 import CardContent from '@mui/material/CardContent';
 import Stack from '@mui/material/Stack';
 import Box from '@mui/material/Box';
+import Link from '@mui/material/Link';
 import Typography from '@mui/material/Typography';
 import ToggleButton from '@mui/material/ToggleButton';
 import ToggleButtonGroup from '@mui/material/ToggleButtonGroup';
@@ -15,7 +15,13 @@ import FormControlLabel from '@mui/material/FormControlLabel';
 import Switch from '@mui/material/Switch';
 import Chip from '@mui/material/Chip';
 import type { Settings } from '../shared/storage';
-import { normalizeHost, siteConverts, setSiteConverts } from '../shared/sites';
+import {
+  normalizeHost,
+  siteConverts,
+  setSiteConverts,
+  siteTarget,
+  setSiteTarget,
+} from '../shared/sites';
 import CurrencyCombobox from './CurrencyCombobox';
 
 interface Props {
@@ -68,8 +74,7 @@ function ListColumn({
 export default function SiteRules({ settings, host, codes, onChange }: Props) {
   const converts = host ? siteConverts(host, settings) : null;
   const mode = settings.siteListMode;
-  // The per-site target picker below doesn't save yet — it's a stand-in for the override.
-  const [overrideTarget, setOverrideTarget] = useState('');
+  const override = host ? siteTarget(host, settings) : null;
 
   return (
     <Card variant="outlined">
@@ -114,14 +119,27 @@ export default function SiteRules({ settings, host, codes, onChange }: Props) {
                 }
               />
               <Box>
-                <Typography variant="caption" color="text.secondary" display="block">
-                  Always show this site in (optional)
-                </Typography>
+                <Stack direction="row" justifyContent="space-between" alignItems="baseline">
+                  <Typography variant="caption" color="text.secondary">
+                    Always show this site in (optional)
+                  </Typography>
+                  {override && (
+                    <Link
+                      component="button"
+                      type="button"
+                      variant="caption"
+                      underline="hover"
+                      onClick={() => host && onChange(setSiteTarget(settings, host, ''))}
+                    >
+                      Use global ({settings.target})
+                    </Link>
+                  )}
+                </Stack>
                 <CurrencyCombobox
                   label="Target for this site"
-                  value={overrideTarget}
+                  value={override ?? ''}
                   codes={codes}
-                  onChange={setOverrideTarget}
+                  onChange={(code) => host && onChange(setSiteTarget(settings, host, code))}
                 />
               </Box>
             </>

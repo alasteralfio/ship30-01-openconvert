@@ -43,6 +43,35 @@ export function siteConverts(host: string, settings: Settings): boolean {
 }
 
 /**
+ * A per-host target-currency override, or null if the host has none. Keys are matched
+ * like the allow/deny lists (registrable domain + subdomains), and the most specific
+ * matching key wins — so a `shop.example.com` entry beats a broader `example.com` one.
+ */
+export function siteTarget(host: string, settings: Settings): string | null {
+  let best: { key: string; target: string } | null = null;
+  for (const [key, target] of Object.entries(settings.siteTargets ?? {})) {
+    if (!hostMatches(host, key)) continue;
+    if (!best || normalizeHost(key).length > normalizeHost(best.key).length) {
+      best = { key, target };
+    }
+  }
+  return best?.target ?? null;
+}
+
+/**
+ * Return a Settings patch that sets (or, with an empty `target`, clears) the target
+ * override for `host`. The host is stored normalized.
+ */
+export function setSiteTarget(settings: Settings, host: string, target: string): Partial<Settings> {
+  const normalized = normalizeHost(host);
+  if (normalized === '') return {};
+  const next = { ...(settings.siteTargets ?? {}) };
+  if (target === '') delete next[normalized];
+  else next[normalized] = target;
+  return { siteTargets: next };
+}
+
+/**
  * Return a Settings patch that makes `siteConverts(host)` equal `shouldConvert`
  * under the current mode, editing only the active list:
  * - blacklist mode: convert → remove matching entries; don't → add the host.

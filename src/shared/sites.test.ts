@@ -1,7 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_SETTINGS } from './storage';
 import type { Settings } from './storage';
-import { hostMatches, normalizeHost, siteConverts, setSiteConverts } from './sites';
+import {
+  hostMatches,
+  normalizeHost,
+  siteConverts,
+  setSiteConverts,
+  siteTarget,
+  setSiteTarget,
+} from './sites';
 
 function withSettings(patch: Partial<Settings>): Settings {
   return { ...DEFAULT_SETTINGS, ...patch };
@@ -75,5 +82,28 @@ describe('setSiteConverts', () => {
     const s = withSettings({ siteListMode: 'blacklist', blacklist: ['youtube.com'] });
     expect(setSiteConverts(s, 'youtube.com', false)).toEqual({}); // already blacklisted
     expect(setSiteConverts(s, 'example.com', true)).toEqual({}); // already converts
+  });
+});
+
+describe('siteTarget / setSiteTarget', () => {
+  it('returns the override for a matching host (subdomains included), else null', () => {
+    const s = withSettings({ siteTargets: { 'amazon.com': 'JPY' } });
+    expect(siteTarget('amazon.com', s)).toBe('JPY');
+    expect(siteTarget('smile.amazon.com', s)).toBe('JPY');
+    expect(siteTarget('example.com', s)).toBeNull();
+  });
+
+  it('prefers the most specific matching key', () => {
+    const s = withSettings({ siteTargets: { 'amazon.com': 'JPY', 'shop.amazon.com': 'GBP' } });
+    expect(siteTarget('shop.amazon.com', s)).toBe('GBP');
+    expect(siteTarget('www.amazon.com', s)).toBe('JPY');
+  });
+
+  it('sets an override under the normalized host, and clears it with an empty target', () => {
+    const s = withSettings({ siteTargets: {} });
+    expect(setSiteTarget(s, 'www.amazon.com', 'JPY')).toEqual({ siteTargets: { 'amazon.com': 'JPY' } });
+
+    const listed = withSettings({ siteTargets: { 'amazon.com': 'JPY' } });
+    expect(setSiteTarget(listed, 'amazon.com', '')).toEqual({ siteTargets: {} });
   });
 });

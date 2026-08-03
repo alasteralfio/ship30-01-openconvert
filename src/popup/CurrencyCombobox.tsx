@@ -7,12 +7,9 @@
 // `inputValue`: empty while focused (unless you've typed), otherwise the option's label.
 
 import { useMemo, useState } from 'react';
-import type { FocusEvent, MouseEvent } from 'react';
+import type { FocusEvent } from 'react';
 import Autocomplete from '@mui/material/Autocomplete';
 import TextField from '@mui/material/TextField';
-import IconButton from '@mui/material/IconButton';
-import StarIcon from '@mui/icons-material/Star';
-import StarBorderIcon from '@mui/icons-material/StarBorder';
 import { getCurrencyName } from '../shared/currencies';
 
 interface Option {
@@ -29,9 +26,6 @@ interface Props {
   onChange: (code: string) => void;
   /** Clear the field after a pick (used by the "add currency" pickers). */
   clearOnSelect?: boolean;
-  /** Show a favourite star on each dropdown row. It doesn't save anywhere yet — this is
-   *  just the look of the pinning feature. */
-  showFavourite?: boolean;
 }
 
 export default function CurrencyCombobox({
@@ -40,21 +34,7 @@ export default function CurrencyCombobox({
   codes,
   onChange,
   clearOnSelect = false,
-  showFavourite = false,
 }: Props) {
-  // Which codes are starred. Lives only for as long as the popup is open.
-  const [favourites, setFavourites] = useState<Set<string>>(new Set());
-  const toggleFavourite = (e: MouseEvent, code: string) => {
-    // Keep focus + stop the row's select handler from firing.
-    e.preventDefault();
-    e.stopPropagation();
-    setFavourites((prev) => {
-      const next = new Set(prev);
-      if (next.has(code)) next.delete(code);
-      else next.add(code);
-      return next;
-    });
-  };
   const options = useMemo<Option[]>(
     () => codes.map((code) => ({ code, name: getCurrencyName(code) })),
     [codes],
@@ -108,28 +88,9 @@ export default function CurrencyCombobox({
         />
       )}
       renderOption={(props, option) => (
-        <li {...props} key={option.code} style={{ ...props.style, display: 'flex' }}>
+        <li {...props} key={option.code}>
           <strong style={{ marginRight: 6 }}>{option.code}</strong>
-          <span style={{ flex: 1 }}>{option.name}</span>
-          {showFavourite && (
-            <IconButton
-              size="small"
-              edge="end"
-              aria-label={
-                favourites.has(option.code)
-                  ? `Unfavourite ${option.code}`
-                  : `Favourite ${option.code}`
-              }
-              onMouseDown={(e) => e.preventDefault()}
-              onClick={(e) => toggleFavourite(e, option.code)}
-            >
-              {favourites.has(option.code) ? (
-                <StarIcon fontSize="small" color="warning" />
-              ) : (
-                <StarBorderIcon fontSize="small" />
-              )}
-            </IconButton>
-          )}
+          {option.name}
         </li>
       )}
     />

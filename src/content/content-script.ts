@@ -12,10 +12,12 @@ import { getSettings, DEFAULT_SETTINGS } from '../shared/storage';
 import type { RateCache, Settings } from '../shared/storage';
 import { convert } from '../shared/convert';
 import { formatNumber } from '../shared/format';
-import { siteConverts } from '../shared/sites';
+import { evaluateExpression } from '../shared/expr';
+import { siteConverts, siteTarget } from '../shared/sites';
 import { detectPrices } from './detect';
 import type { DetectionContext, PriceMatch } from './detect';
 import { renderShellPreview } from './shells';
+import { showOverlayCard } from './overlay';
 
 const CONVERTED_ATTR = 'data-oc-converted'; // marks a tracked price (never re-detected)
 const HIGHLIGHT_ATTR = 'data-oc-highlight'; // present when the highlight toggle is on
@@ -58,6 +60,11 @@ function isActive(): boolean {
   return settings.enabled && siteConverts(location.hostname, settings);
 }
 
+/** The target currency for this page — a per-site override if set, else the global one. */
+function effectiveTarget(): string {
+  return siteTarget(location.hostname, settings) ?? settings.target;
+}
+
 // --- Rendering (single source of truth for how a tracked price looks) -----------
 
 /**
@@ -68,10 +75,11 @@ function isActive(): boolean {
 function applyRender(el: HTMLElement): void {
   const original = el.dataset.ocOriginal;
   if (original === undefined) return;
+  const target = effectiveTarget();
   const m = detectPrices(original, ctx)[0];
   const value =
-    m && isActive() && passesFilter(m.currency) && m.currency !== settings.target
-      ? safeConvert(m, settings.target)
+    m && isActive() && passesFilter(m.currency) && m.currency !== target
+      ? safeConvert(m, target)
       : null;
 
   if (value === null) {
@@ -81,7 +89,7 @@ function applyRender(el: HTMLElement): void {
     return;
   }
 
-  const converted = `${formatNumber(value, settings.numberFormat, settings.precision)} ${settings.target}`;
+  const converted = `${formatNumber(value, settings.numberFormat, settings.precision)} ${target}`;
   if (settings.displayMode === 'hover') {
     el.textContent = original; // original stays visible
     el.title = converted; // converted revealed on hover
@@ -275,17 +283,209 @@ function dominantCurrency(): string | null {
   return null;
 }
 
+// --- Right-click features (select-to-convert, totals, table column) -------------
+// The worker owns the context-menu items and forwards each click here; this is where
+// the work happens. They run even when live conversion is off, so we make sure the
+// cached table and detection context are loaded first.
+
+interface Priced {
+  currency: string;
+  amount: number;
+}
+
+/** The element the user last right-clicked — used to find the table column. */
+let lastRightClicked: Element | null = null;
+document.addEventListener('contextmenu', (e) => (lastRightClicked = e.target as Element), true);
+
+/** Load the cached table and detection context if we don't already have them. */
+async function ensureReady(): Promise<boolean> {
+  if (!rates) rates = await sendMessage({ type: 'getRates' });
+  if (!rates) return false;
+  if (ctx.knownCodes.size === 0) {
+    ctx = {
+      knownCodes: new Set(Object.keys(rates.rates)),
+      host: location.hostname,
+      lang: document.documentElement.lang || '',
+      fromFilter: settings.fromFilter,
+    };
+  }
+  return true;
+}
+
+/** Sum prices into `target`, grouping by source currency first so mixed pages add up. */
+function totalInTarget(prices: Priced[], target: string): { total: number; count: number } {
+  const perCurrency: Record<string, number> = {};
+  let count = 0;
+  for (const p of prices) {
+    perCurrency[p.currency] = (perCurrency[p.currency] ?? 0) + p.amount;
+    count++;
+  }
+  let total = 0;
+  for (const [currency, amount] of Object.entries(perCurrency)) {
+    if (!rates) continue;
+    try {
+      total += convert(amount, currency, target, rates.rates, 6); // round once, at the end
+    } catch {
+      /* currency missing from the cached table */
+    }
+  }
+  return { total, count };
+}
+
+/** All prices on the page: from tracked originals if conversion has run, else page text. */
+function collectPagePrices(): Priced[] {
+  const tracked = document.querySelectorAll<HTMLElement>(`[${CONVERTED_ATTR}]`);
+  const out: Priced[] = [];
+  if (tracked.length > 0) {
+    for (const el of tracked) {
+      const m = el.dataset.ocOriginal ? detectPrices(el.dataset.ocOriginal, ctx)[0] : undefined;
+      if (m) out.push({ currency: m.currency, amount: m.amount });
+    }
+    return out;
+  }
+  const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+  for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+    const t = n as Text;
+    if (shouldSkipText(t)) continue;
+    for (const m of detectPrices(t.nodeValue ?? '', ctx)) {
+      out.push({ currency: m.currency, amount: m.amount });
+    }
+  }
+  return out;
+}
+
+function formatTotalCard(tag: string, total: number, count: number, target: string): void {
+  if (count === 0) {
+    showOverlayCard({ tag, value: 'No prices found' });
+    return;
+  }
+  showOverlayCard({
+    tag,
+    value: `${formatNumber(total, settings.numberFormat, settings.precision)} ${target}`,
+    sub: `${count} price${count === 1 ? '' : 's'}`,
+  });
+}
+
+/** Convert a right-clicked selection: use its own currency, or the popup source if bare. */
+function handleConvertSelection(text: string): void {
+  const trimmed = text.trim();
+  const target = effectiveTarget();
+  const m = detectPrices(trimmed, ctx)[0];
+  let currency: string;
+  let amount: number;
+  if (m) {
+    currency = m.currency;
+    amount = m.amount;
+  } else {
+    // No currency glyph — treat it as a bare number in the popup's source currency.
+    const num = evaluateExpression(trimmed) ?? looseNumber(trimmed);
+    if (num === null) {
+      showOverlayCard({ tag: 'Convert', label: trimmed, value: 'Not a number' });
+      return;
+    }
+    currency = settings.source;
+    amount = num;
+  }
+  if (!rates) return;
+  let value: number;
+  try {
+    value = convert(amount, currency, target, rates.rates, settings.precision);
+  } catch {
+    showOverlayCard({ tag: 'Convert', value: 'Rate unavailable' });
+    return;
+  }
+  showOverlayCard({
+    tag: 'Converted',
+    label: trimmed.length > 30 ? `${trimmed.slice(0, 30)}…` : trimmed,
+    value: `${formatNumber(value, settings.numberFormat, settings.precision)} ${target}`,
+    sub: `${currency} → ${target}`,
+  });
+}
+
+/** A last-ditch parse for a bare selected number like "1,234.50". */
+function looseNumber(text: string): number | null {
+  const n = Number(text.replace(/[\s,]/g, ''));
+  return Number.isFinite(n) ? n : null;
+}
+
+/** Total the prices inside the current selection (their visible text). */
+function handleSelectionTotal(): void {
+  const text = window.getSelection()?.toString() ?? '';
+  const target = effectiveTarget();
+  const prices = detectPrices(text, ctx).map((m) => ({ currency: m.currency, amount: m.amount }));
+  const { total, count } = totalInTarget(prices, target);
+  formatTotalCard('Selection total', total, count, target);
+}
+
+/** Highlight a column's cells briefly, then total their prices into the target. */
+function handleConvertColumn(): void {
+  const cell = lastRightClicked?.closest('td, th') as HTMLTableCellElement | null;
+  const table = cell?.closest('table');
+  if (!cell || !table) {
+    showOverlayCard({ tag: 'Table column', value: 'Right-click a table cell' });
+    return;
+  }
+  const index = cell.cellIndex;
+  const cells: HTMLTableCellElement[] = [];
+  for (const row of Array.from(table.rows)) {
+    const c = row.cells[index];
+    if (c) cells.push(c);
+  }
+  const target = effectiveTarget();
+  const prices: Priced[] = [];
+  for (const c of cells) {
+    const source = c.dataset.ocOriginal ?? c.textContent ?? '';
+    const m = detectPrices(source, ctx)[0];
+    if (m) prices.push({ currency: m.currency, amount: m.amount });
+    flash(c);
+  }
+  const { total, count } = totalInTarget(prices, target);
+  formatTotalCard('Column total', total, count, target);
+}
+
+/** Flash a subtle outline on an element for a moment. */
+function flash(el: HTMLElement): void {
+  const prev = el.style.outline;
+  el.style.outline = '2px solid rgba(25,118,210,0.6)';
+  window.setTimeout(() => (el.style.outline = prev), 1500);
+}
+
 browser.runtime.onMessage.addListener(
   (message: unknown): Promise<ContentResponse> | undefined => {
-    const type = (message as ContentRequest | undefined)?.type;
-    if (type === 'getDominantCurrency') {
-      return Promise.resolve({ dominant: dominantCurrency(), tally: { ...pageTally } });
+    const req = message as ContentRequest | undefined;
+    switch (req?.type) {
+      case 'getDominantCurrency':
+        return Promise.resolve({ dominant: dominantCurrency(), tally: { ...pageTally } });
+      case 'previewShells':
+        renderShellPreview();
+        return Promise.resolve({ ok: true });
+      case 'convertSelection':
+        return ensureReady().then((ok) => {
+          if (ok) handleConvertSelection(req.text);
+          return { ok: true };
+        });
+      case 'selectionTotal':
+        return ensureReady().then((ok) => {
+          if (ok) handleSelectionTotal();
+          return { ok: true };
+        });
+      case 'pageTotal':
+        return ensureReady().then((ok) => {
+          if (ok) {
+            const target = effectiveTarget();
+            const { total, count } = totalInTarget(collectPagePrices(), target);
+            formatTotalCard('Page total', total, count, target);
+          }
+          return { ok: true };
+        });
+      case 'convertColumn':
+        return ensureReady().then((ok) => {
+          if (ok) handleConvertColumn();
+          return { ok: true };
+        });
+      default:
+        return undefined;
     }
-    if (type === 'previewShells') {
-      renderShellPreview();
-      return Promise.resolve({ ok: true });
-    }
-    return undefined;
   },
 );
 
