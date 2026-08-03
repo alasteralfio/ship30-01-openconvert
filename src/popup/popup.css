@@ -26,7 +26,8 @@
   align-items: center;
 }
 
-.oc-from-filter {
+.oc-from-filter,
+.oc-display {
   display: flex;
   flex-direction: column;
   gap: 6px;

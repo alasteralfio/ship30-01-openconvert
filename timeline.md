@@ -127,18 +127,24 @@ made "reset to auto-detect" re-adopt the dominant currency immediately instead o
 ### Checkpoint 4.2 — Handles dynamic pages
 Test: on an infinite-scroll or SPA page, newly loaded prices convert within a couple of seconds
 with no double-conversion; switch display modes; toggle the highlight.
-Completed:
+Completed: 2026-08-03 — a throttled `MutationObserver` (1s window, disconnected during our own edits
+to avoid loops) re-scans added subtrees and JS-filled text, converting new prices off the cached
+table with no refetch and no double-convert (tracked nodes carry `data-oc-converted` and are never
+re-detected). Every detected price stashes its original in `data-oc-original`, so target/from-filter/
+display-mode/highlight changes **re-apply live** via `browser.storage.onChanged` — no page reload
+(this also fixes the "from-filter needs a refresh" step). Display modes: in-place replace (default)
+and keep-original/convert-on-hover; plus an off-by-default highlight (dotted-underline placeholder,
+Phase 6 restyles). Build/lint/test pass clean.
 
-> Verification targets carried over from 4.1 testing (both are dynamic-content cases): **Codashop**
-> (client-side SPA — prices fetched after load, so the one-shot scan misses them) and **Etsy**
-> search results (the *visible* sale price is JS-populated after render — its static screen-reader
-> and strikethrough copies already convert under 4.1, proving detection works). The re-scan loop
-> should pick both up. Re-scan-on-settings-change also removes the current "from-filter needs a page
-> refresh" step.
+> **Known limitation — Etsy visible sale price (accepted).** Its screen-reader and strikethrough
+> copies convert and stick, so detection/conversion are proven; the *visible* sale price simply never
+> converts (no flicker), i.e. that element is owned/rendered by Etsy's SPA in a way our scan +
+> MutationObserver don't capture. Deliberately accepted as an edge case rather than chased; revisit
+> only if robust support for framework-owned price nodes becomes a priority.
 
-- [ ] Dynamic re-scan. A MutationObserver with a 1–2s throttle converts newly added prices off the
+- [x] Dynamic re-scan. A MutationObserver with a 1–2s throttle converts newly added prices off the
   cached table, with no refetch and no double-convert.
-- [ ] Display modes and highlight. In-place replace as the default, hover-to-reveal-original as the
+- [x] Display modes and highlight. In-place replace as the default, hover-to-reveal-original as the
   alternative, and an optional highlight style for converted prices.
 
 ---

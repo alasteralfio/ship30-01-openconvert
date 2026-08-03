@@ -1,76 +1,87 @@
 // Content script: scan the DOM for prices, request the cached rate table from the
-// worker once, convert locally, rewrite matches in place (original kept in the
-// title tooltip), and report the page's dominant currency for the popup's source
-// auto-detect. Checkpoint 4.1 is a one-shot scan of the static page; the throttled
-// MutationObserver for dynamic pages lands in 4.2. See overview.md > Core B.
+// worker once, convert locally, rewrite matches in place, and keep up with dynamic
+// pages via a throttled MutationObserver. Every detected price is tracked (its
+// original stashed in `data-oc-original`) so target/from-filter/display-mode changes
+// re-apply live — driven by `browser.storage.onChanged`, no page reload. Reports the
+// page's dominant currency for the popup's source auto-detect. See overview.md > Core B.
 
 import browser from 'webextension-polyfill';
 import { sendMessage } from '../shared/messaging';
 import type { ContentRequest, DominantCurrencyReport } from '../shared/messaging';
-import { getSettings } from '../shared/storage';
+import { getSettings, DEFAULT_SETTINGS } from '../shared/storage';
 import type { RateCache, Settings } from '../shared/storage';
 import { convert } from '../shared/convert';
 import { detectPrices } from './detect';
 import type { DetectionContext, PriceMatch } from './detect';
 
-/** Marks a rewritten node so re-scans never convert it twice. */
-const CONVERTED_ATTR = 'data-oc-converted';
-
-/** Running count of every detected source currency on this page (for auto-detect). */
-const pageTally: Record<string, number> = {};
+const CONVERTED_ATTR = 'data-oc-converted'; // marks a tracked price (never re-detected)
+const HIGHLIGHT_ATTR = 'data-oc-highlight'; // present when the highlight toggle is on
+const RESCAN_MS = 1000; // throttle window for the dynamic-page re-scan
+const MAX_PRICE_LEN = 40; // longest element text still treated as a single price
 
 /** Elements whose text is code/markup or user-editable — never scan these. */
 const SKIP_TAGS = new Set(['SCRIPT', 'STYLE', 'NOSCRIPT', 'TEXTAREA', 'CODE', 'PRE']);
 
-function shouldSkip(node: Text): boolean {
+// --- Session state (set on start; rates never change within a page session) -----
+let rates: RateCache | null = null;
+let settings: Settings = DEFAULT_SETTINGS;
+let ctx: DetectionContext = { knownCodes: new Set(), host: '', lang: '', fromFilter: [] };
+let scanned = false;
+
+/** Running count of every detected source currency on this page (for auto-detect). */
+const pageTally: Record<string, number> = {};
+
+// --- Skipping & filtering -------------------------------------------------------
+
+function shouldSkipText(node: Text): boolean {
   const parent = node.parentElement;
   if (!parent) return true;
-  if (parent.closest(`[${CONVERTED_ATTR}]`)) return true; // already converted
+  if (parent.closest(`[${CONVERTED_ATTR}]`)) return true; // already tracked
   if (parent.isContentEditable) return true;
   return SKIP_TAGS.has(parent.tagName);
 }
 
 /** Whether a detected source currency is in scope for conversion (empty filter = All). */
-function passesFilter(currency: string, fromFilter: string[]): boolean {
-  return fromFilter.length === 0 || fromFilter.includes(currency);
+function passesFilter(currency: string): boolean {
+  return settings.fromFilter.length === 0 || settings.fromFilter.includes(currency);
 }
 
-/** Rewrite one text node's prices in place, wrapping each converted value in a span. */
-function convertTextNode(node: Text, ctx: DetectionContext, rates: RateCache, settings: Settings) {
-  const text = node.nodeValue;
-  if (!text) return;
-  const matches = detectPrices(text, ctx);
-  if (matches.length === 0) return;
+// --- Rendering (single source of truth for how a tracked price looks) -----------
 
-  // Tally every detected currency (dominant-currency stat is independent of the
-  // from-filter — it describes the page, not what we chose to convert).
-  for (const m of matches) pageTally[m.currency] = (pageTally[m.currency] ?? 0) + 1;
+/**
+ * Render one tracked element from its stashed original price, honouring the
+ * current settings. Called on first conversion and on every settings change, so
+ * flipping target/from-filter/display-mode/highlight is fully reversible.
+ */
+function applyRender(el: HTMLElement): void {
+  const original = el.dataset.ocOriginal;
+  if (original === undefined) return;
+  const m = detectPrices(original, ctx)[0];
+  const value =
+    m && settings.enabled && passesFilter(m.currency) && m.currency !== settings.target
+      ? safeConvert(m, settings.target)
+      : null;
 
-  const fragment = document.createDocumentFragment();
-  let cursor = 0;
-  let converted = 0;
-  for (const m of matches) {
-    if (!passesFilter(m.currency, settings.fromFilter)) continue;
-    if (m.currency === settings.target) continue; // already the target currency
-    const value = safeConvert(m, settings.target, rates);
-    if (value === null) continue;
-
-    fragment.appendChild(document.createTextNode(text.slice(cursor, m.start)));
-    const span = document.createElement('span');
-    span.setAttribute(CONVERTED_ATTR, '');
-    span.title = m.text; // original price, revealed on hover
-    span.textContent = `${value.toFixed(2)} ${settings.target}`;
-    fragment.appendChild(span);
-    cursor = m.end;
-    converted += 1;
+  if (value === null) {
+    el.textContent = original; // show the original untouched
+    el.removeAttribute('title');
+    el.removeAttribute(HIGHLIGHT_ATTR);
+    return;
   }
 
-  if (converted === 0) return; // everything was filtered out — leave the node untouched
-  fragment.appendChild(document.createTextNode(text.slice(cursor)));
-  node.parentNode?.replaceChild(fragment, node);
+  const converted = `${value.toFixed(2)} ${settings.target}`;
+  if (settings.displayMode === 'hover') {
+    el.textContent = original; // original stays visible
+    el.title = converted; // converted revealed on hover
+  } else {
+    el.textContent = converted; // converted replaces the price
+    el.title = original; // original revealed on hover
+  }
+  el.toggleAttribute(HIGHLIGHT_ATTR, settings.highlight);
 }
 
-function safeConvert(m: PriceMatch, target: string, rates: RateCache): number | null {
+function safeConvert(m: PriceMatch, target: string): number | null {
+  if (!rates) return null;
   try {
     return convert(m.amount, m.currency, target, rates.rates);
   } catch {
@@ -78,27 +89,57 @@ function safeConvert(m: PriceMatch, target: string, rates: RateCache): number | 
   }
 }
 
+/** Wrap a detected price (from a text node) in a tracked span. */
+function makeTrackedSpan(original: string): HTMLSpanElement {
+  const span = document.createElement('span');
+  span.setAttribute(CONVERTED_ATTR, '');
+  // Stay visually transparent: inherit the price's own colour, so a site rule that
+  // styles nested spans (e.g. Codashop) can't recolour the converted value.
+  span.style.color = 'inherit';
+  span.dataset.ocOriginal = original;
+  applyRender(span);
+  return span;
+}
+
+// --- Detection passes -----------------------------------------------------------
+
+/** Rewrite one text node's prices, wrapping each in a tracked span. */
+function convertTextNode(node: Text): void {
+  const text = node.nodeValue;
+  if (!text) return;
+  const matches = detectPrices(text, ctx);
+  if (matches.length === 0) return;
+  for (const m of matches) pageTally[m.currency] = (pageTally[m.currency] ?? 0) + 1;
+
+  const fragment = document.createDocumentFragment();
+  let cursor = 0;
+  for (const m of matches) {
+    fragment.appendChild(document.createTextNode(text.slice(cursor, m.start)));
+    fragment.appendChild(makeTrackedSpan(m.text));
+    cursor = m.end;
+  }
+  fragment.appendChild(document.createTextNode(text.slice(cursor)));
+  node.parentNode?.replaceChild(fragment, node);
+}
+
 /** Walk every text node under `root` and convert the prices found. */
-function scanTextNodes(root: Node, ctx: DetectionContext, rates: RateCache, settings: Settings) {
+function scanTextNodes(root: Node): void {
   const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
   // Collect first, then mutate — rewriting nodes mid-walk would invalidate the walker.
   const nodes: Text[] = [];
   for (let n = walker.nextNode(); n; n = walker.nextNode()) {
     const text = n as Text;
-    if (!shouldSkip(text)) nodes.push(text);
+    if (!shouldSkipText(text)) nodes.push(text);
   }
-  for (const node of nodes) convertTextNode(node, ctx, rates, settings);
+  for (const node of nodes) convertTextNode(node);
 }
-
-/** Max characters an element's combined text may hold to still count as one price. */
-const MAX_PRICE_LEN = 40;
 
 /**
  * A single price occupying (essentially) an element's whole text — e.g. a shop's
  * price split across `<span>S$</span><span>12</span><span>34</span>`, where no one
  * text node holds the full price. Returns that match, or null.
  */
-function fullPriceMatch(el: Element, ctx: DetectionContext): PriceMatch | null {
+function fullPriceMatch(el: Element): PriceMatch | null {
   const raw = el.textContent ?? '';
   if (raw.length === 0 || raw.length > MAX_PRICE_LEN) return null;
   const trimmed = raw.trim();
@@ -109,46 +150,107 @@ function fullPriceMatch(el: Element, ctx: DetectionContext): PriceMatch | null {
   return null;
 }
 
-/** Replace a whole element's content with the converted value (original in `title`). */
-function convertElement(el: Element, m: PriceMatch, rates: RateCache, settings: Settings) {
-  pageTally[m.currency] = (pageTally[m.currency] ?? 0) + 1;
-  if (!passesFilter(m.currency, settings.fromFilter)) return;
-  if (m.currency === settings.target) return;
-  const value = safeConvert(m, settings.target, rates);
-  if (value === null) return;
-  el.setAttribute(CONVERTED_ATTR, '');
-  (el as HTMLElement).title = m.text;
-  el.textContent = `${value.toFixed(2)} ${settings.target}`;
-}
-
 /**
- * Catch prices split across child elements: find the *innermost* elements whose
- * whole text is one price and rewrite them. Runs after the text-node pass, so
- * single-node prices are already wrapped (and skipped here via CONVERTED_ATTR).
+ * Catch prices split across child elements: track the *innermost* elements whose
+ * whole text is one price. Runs after the text-node pass, so single-node prices
+ * are already wrapped (and skipped here via CONVERTED_ATTR).
  */
-function scanSplitPrices(root: Element, ctx: DetectionContext, rates: RateCache, settings: Settings) {
+function scanSplitPrices(root: Element): void {
   const candidates: { el: Element; m: PriceMatch }[] = [];
   for (const el of root.querySelectorAll('*')) {
     if (el.closest(`[${CONVERTED_ATTR}]`)) continue;
+    // Skip a container whose text is derived from an already-converted child —
+    // otherwise its converted "<value> <CODE>" text reads as a fresh price and
+    // gets re-processed (double conversion / lost styling).
+    if (el.querySelector(`[${CONVERTED_ATTR}]`)) continue;
     if (SKIP_TAGS.has(el.tagName) || (el as HTMLElement).isContentEditable) continue;
-    const m = fullPriceMatch(el, ctx);
+    const m = fullPriceMatch(el);
     if (m) candidates.push({ el, m });
   }
-  // Keep only the innermost matches (drop any element that contains another match),
-  // so we rewrite `<span>S$12.34</span>` rather than an outer wrapper.
+  // Keep only the innermost matches so we rewrite `<span>S$12.34</span>`, not a wrapper.
   const innermost = candidates.filter(
     ({ el }) => !candidates.some((o) => o.el !== el && el.contains(o.el)),
   );
-  for (const { el, m } of innermost) convertElement(el, m, rates, settings);
+  for (const { el, m } of innermost) {
+    pageTally[m.currency] = (pageTally[m.currency] ?? 0) + 1;
+    const target = el as HTMLElement;
+    target.setAttribute(CONVERTED_ATTR, '');
+    target.dataset.ocOriginal = m.text;
+    applyRender(target);
+  }
 }
 
-/** Convert prices on the page: single-node prices first, then split ones. */
-function scan(root: Element, ctx: DetectionContext, rates: RateCache, settings: Settings) {
-  scanTextNodes(root, ctx, rates, settings);
-  scanSplitPrices(root, ctx, rates, settings);
+/** Convert prices under `root`: single-node prices first, then split ones. */
+function scan(root: Element): void {
+  scanTextNodes(root);
+  scanSplitPrices(root);
 }
 
-/** The ISO code making up >50% of detected prices, or null. */
+/** How many ancestors up a mutation to re-scan (a split price is assembled by a
+ * parent from sibling children, so scanning only the changed node misses it). */
+const CLIMB_LEVELS = 3;
+
+/** Scan from a few ancestors above a changed node so sibling-assembled prices show. */
+function scanFrom(el: Element): void {
+  let root: Element = el;
+  for (let i = 0; i < CLIMB_LEVELS; i++) {
+    const parent = root.parentElement;
+    if (!parent || parent === document.body) break;
+    root = parent;
+  }
+  scan(root);
+}
+
+/** Re-render every already-tracked price from its stashed original. */
+function reapplyAll(): void {
+  for (const el of document.querySelectorAll<HTMLElement>(`[${CONVERTED_ATTR}]`)) {
+    applyRender(el);
+  }
+}
+
+// --- Dynamic-page re-scan (throttled MutationObserver) --------------------------
+
+const pendingRoots = new Set<Element>();
+let flushTimer: ReturnType<typeof setTimeout> | undefined;
+
+const observer = new MutationObserver((records) => {
+  for (const record of records) {
+    for (const node of record.addedNodes) {
+      if (node.nodeType === Node.ELEMENT_NODE) pendingRoots.add(node as Element);
+      else if (node.nodeType === Node.TEXT_NODE && node.parentElement) {
+        pendingRoots.add(node.parentElement);
+      }
+    }
+    // Text swapped in place (e.g. a price value filled by JS after load).
+    if (record.type === 'characterData' && record.target.parentElement) {
+      pendingRoots.add(record.target.parentElement);
+    }
+  }
+  if (pendingRoots.size > 0 && flushTimer === undefined) {
+    flushTimer = setTimeout(flush, RESCAN_MS);
+  }
+});
+
+function observe(): void {
+  observer.observe(document.body, { childList: true, characterData: true, subtree: true });
+}
+
+/** Scan everything accumulated since the last flush. Our own edits are excluded
+ * by disconnecting the observer for the duration. */
+function flush(): void {
+  flushTimer = undefined;
+  const roots = [...pendingRoots];
+  pendingRoots.clear();
+  observer.disconnect();
+  for (const root of roots) {
+    if (!root.isConnected || root.closest(`[${CONVERTED_ATTR}]`)) continue;
+    scanFrom(root);
+  }
+  observe();
+}
+
+// --- Dominant currency (popup source auto-detect) -------------------------------
+
 function dominantCurrency(): string | null {
   const total = Object.values(pageTally).reduce((sum, n) => sum + n, 0);
   if (total === 0) return null;
@@ -158,25 +260,68 @@ function dominantCurrency(): string | null {
   return null;
 }
 
-// Answer the popup's dominant-currency query (delivered via tabs.sendMessage).
-browser.runtime.onMessage.addListener((message: unknown): Promise<DominantCurrencyReport> | undefined => {
-  if ((message as ContentRequest | undefined)?.type !== 'getDominantCurrency') return undefined;
-  return Promise.resolve({ dominant: dominantCurrency(), tally: { ...pageTally } });
-});
+browser.runtime.onMessage.addListener(
+  (message: unknown): Promise<DominantCurrencyReport> | undefined => {
+    if ((message as ContentRequest | undefined)?.type !== 'getDominantCurrency') return undefined;
+    return Promise.resolve({ dominant: dominantCurrency(), tally: { ...pageTally } });
+  },
+);
 
-async function init() {
-  const settings = await getSettings();
-  if (!settings.enabled) return; // global kill switch — do not touch the page
-  const rates = await sendMessage({ type: 'getRates' });
+// --- Highlight style (functional placeholder; Phase 6 defines the real look) ----
+
+function injectHighlightStyle(): void {
+  if (document.getElementById('oc-style')) return;
+  const style = document.createElement('style');
+  style.id = 'oc-style';
+  style.textContent = `[${HIGHLIGHT_ATTR}]{text-decoration:underline dotted;text-underline-offset:2px;}`;
+  (document.head ?? document.documentElement).appendChild(style);
+}
+
+// --- Lifecycle ------------------------------------------------------------------
+
+/** First full scan of the page and start watching for dynamic changes. */
+async function start(): Promise<void> {
+  if (scanned) return;
+  rates = await sendMessage({ type: 'getRates' });
   if (!rates) return; // no cached table yet; nothing to convert against
-
-  const ctx: DetectionContext = {
+  ctx = {
     knownCodes: new Set(Object.keys(rates.rates)),
     host: location.hostname,
     lang: document.documentElement.lang || '',
     fromFilter: settings.fromFilter,
   };
-  scan(document.body, ctx, rates, settings);
+  injectHighlightStyle();
+  scan(document.body);
+  scanned = true;
+  observe();
+}
+
+// Re-apply live when settings change (target, from-filter, display mode, highlight,
+// kill switch). Enabling from cold triggers the first scan.
+browser.storage.onChanged.addListener((changes, area) => {
+  if (area !== 'local' || !changes.settings) return;
+  const wasEnabled = settings.enabled;
+  settings = { ...DEFAULT_SETTINGS, ...(changes.settings.newValue as Partial<Settings>) };
+  ctx.fromFilter = settings.fromFilter;
+  if (settings.enabled && !scanned) {
+    void start();
+    return;
+  }
+  if (!wasEnabled && settings.enabled && scanned) {
+    observer.disconnect();
+    scan(document.body); // catch prices that appeared while disabled
+    reapplyAll();
+    observe();
+    return;
+  }
+  observer.disconnect();
+  reapplyAll();
+  observe();
+});
+
+async function init(): Promise<void> {
+  settings = await getSettings();
+  if (settings.enabled) await start();
 }
 
 void init();

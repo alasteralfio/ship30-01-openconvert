@@ -173,6 +173,36 @@ export default function App() {
         onChange={(list) => void update({ fromFilter: list })}
       />
 
+      <fieldset className="oc-display">
+        <legend>Page display</legend>
+        <label className="oc-inline">
+          <input
+            type="radio"
+            name="displayMode"
+            checked={settings.displayMode === 'replace'}
+            onChange={() => void update({ displayMode: 'replace' })}
+          />
+          Replace price (original on hover)
+        </label>
+        <label className="oc-inline">
+          <input
+            type="radio"
+            name="displayMode"
+            checked={settings.displayMode === 'hover'}
+            onChange={() => void update({ displayMode: 'hover' })}
+          />
+          Keep original (converted on hover)
+        </label>
+        <label className="oc-inline">
+          <input
+            type="checkbox"
+            checked={settings.highlight}
+            onChange={() => void update({ highlight: !settings.highlight })}
+          />
+          Highlight converted prices
+        </label>
+      </fieldset>
+
       <div className="oc-result">
         {result === null ? (
           <span>—</span>

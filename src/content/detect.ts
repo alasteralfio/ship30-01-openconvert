@@ -83,12 +83,14 @@ const SYMBOLS = [
   'MX\\$',
   'NT\\$',
   'R\\$',
-  'Rp',
-  'RM',
-  'zł',
-  'Kč',
-  'kr',
-  'Kr',
+  // Alphabetic symbols may carry an abbreviation dot (e.g. Codashop's "Rp. 60.000",
+  // Nordic "kr."). The optional dot is stripped during resolution.
+  'Rp\\.?',
+  'RM\\.?',
+  'zł\\.?',
+  'Kč\\.?',
+  'kr\\.?',
+  'Kr\\.?',
   '\\$',
   '€', // €
   '£', // £
@@ -177,9 +179,10 @@ function heuristic(symbol: string, host: string, lang: string): string | null {
 
 /** Resolve a matched symbol/qualifier to a single ISO code per the priority order. */
 function resolveSymbol(raw: string, ctx: DetectionContext): string | null {
-  if (QUALIFIERS[raw]) return QUALIFIERS[raw]; // 1. explicit qualifier
-  if (DIRECT_SYMBOLS[raw]) return DIRECT_SYMBOLS[raw]; // unambiguous glyph
-  const symbol = raw === 'Kr' ? 'kr' : raw;
+  const base = raw.endsWith('.') ? raw.slice(0, -1) : raw; // drop an abbreviation dot
+  if (QUALIFIERS[base]) return QUALIFIERS[base]; // 1. explicit qualifier
+  if (DIRECT_SYMBOLS[base]) return DIRECT_SYMBOLS[base]; // unambiguous glyph
+  const symbol = base === 'Kr' ? 'kr' : base;
   const candidates = AMBIGUOUS_SYMBOLS[symbol];
   if (candidates) {
     // 2. from-filter naming exactly one candidate that uses this glyph

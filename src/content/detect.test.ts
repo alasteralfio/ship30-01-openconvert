@@ -86,6 +86,11 @@ describe('detectPrices', () => {
     expect(detectPrices('RM 88', ctx())[0]).toMatchObject({ currency: 'MYR', amount: 88 });
   });
 
+  it('tolerates an abbreviation dot on alphabetic symbols (e.g. "Rp. 60.000")', () => {
+    expect(detectPrices('Rp. 60.000', ctx())[0]).toMatchObject({ currency: 'IDR', amount: 60000 });
+    expect(detectPrices('kr. 149', ctx())[0]).toMatchObject({ currency: 'SEK', amount: 149 });
+  });
+
   it('uses a single from-filter candidate to disambiguate a glyph', () => {
     const [m] = detectPrices('$50', ctx({ fromFilter: ['AUD'] }));
     expect(m.currency).toBe('AUD');

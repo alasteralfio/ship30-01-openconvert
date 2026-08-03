@@ -45,6 +45,14 @@ export interface Settings {
    * ISO codes. Separate from the popup converter's `source`.
    */
   fromFilter: string[];
+  /**
+   * How converted prices are shown on the page:
+   * - `replace`: rewrite the price to the converted value, original on hover (default).
+   * - `hover`: leave the original visible, show the converted value on hover.
+   */
+  displayMode: 'replace' | 'hover';
+  /** Add a subtle marker to converted prices on the page (default off). */
+  highlight: boolean;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -54,6 +62,8 @@ export const DEFAULT_SETTINGS: Settings = {
   sourceManuallySet: false,
   enabled: true,
   fromFilter: [],
+  displayMode: 'replace',
+  highlight: false,
 };
 
 const RATE_CACHE_KEY = 'rateCache';
