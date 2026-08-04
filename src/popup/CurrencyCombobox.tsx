@@ -1,10 +1,6 @@
-// Searchable currency picker, used for both the source and target. An MUI Autocomplete
-// over the cached table's codes, matching on ISO code or name, with the same
-// onChange(code) shape everywhere it's used.
-//
-// Focusing the field clears it so you can start typing a search right away; if you don't
-// pick anything, blurring puts the current selection back. We get that by controlling
-// `inputValue`: empty while focused (unless you've typed), otherwise the option's label.
+// Searchable currency picker (source and target). An MUI Autocomplete over the cached table's
+// codes, matching on ISO code or name. Focus clears the field for a fresh search; blurring
+// without a pick restores the current selection — done by controlling `inputValue`.
 
 import { useMemo, useState } from 'react';
 import type { FocusEvent } from 'react';

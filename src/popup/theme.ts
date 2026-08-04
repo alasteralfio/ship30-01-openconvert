@@ -1,17 +1,17 @@
-// The popup's one and only theme. We keep MUI's default palette and just tune the shape,
-// density, and surfaces for a flatter, more modern feel: a grey canvas, white cards, and
-// hairline borders instead of drop shadows. No light/dark toggle — one look everywhere.
+// The popup's one theme: a neutral grey dark mode. Mid-dark canvas, lighter cards, hairline
+// light borders. mode:'dark' so MUI derives the dependent text/border/icon colours; accents
+// stay on the standard palette. No toggle.
 
 import { createTheme } from '@mui/material/styles';
 
 const theme = createTheme({
   palette: {
-    mode: 'light',
+    mode: 'dark',
     background: {
-      default: '#f5f6f8',
-      paper: '#ffffff',
+      default: '#2b2d31', // canvas behind the cards — the darker grey
+      paper: '#3a3d42', // the cards themselves — a lighter grey that lifts off the canvas
     },
-    divider: 'rgba(0, 0, 0, 0.08)',
+    divider: 'rgba(255, 255, 255, 0.12)',
   },
   shape: {
     borderRadius: 10,
@@ -34,7 +34,7 @@ const theme = createTheme({
       defaultProps: { elevation: 0 },
       styleOverrides: {
         root: {
-          border: '1px solid rgba(0, 0, 0, 0.08)',
+          border: '1px solid rgba(255, 255, 255, 0.10)',
         },
       },
     },

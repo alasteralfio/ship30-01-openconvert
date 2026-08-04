@@ -1,8 +1,5 @@
-// Evaluates the little arithmetic expressions people type into the amount field —
-// tallying a receipt as "12 + 4.50 + 9" instead of reaching for a calculator. It's a
-// small recursive-descent parser (no eval): numbers, + - * /, parentheses, and a leading
-// sign. Anything it doesn't understand, or a result that isn't a finite number, comes
-// back as null so the caller can just show a blank result.
+// Recursive-descent evaluator for the amount field (e.g. "12 + 4.50"): numbers, + - * /,
+// parentheses, leading sign. Returns null on anything empty, malformed, or non-finite. No eval.
 
 type Token = { kind: 'num'; value: number } | { kind: 'op'; value: string };
 
@@ -63,7 +60,7 @@ export function evaluateExpression(input: string): number | null {
       const op = eat().value;
       const right = parseFactor();
       if (right === null) return null;
-      if (op === '/' && right === 0) return null; // no dividing by zero
+      if (op === '/' && right === 0) return null;
       left = op === '*' ? left * right : left / right;
     }
     return left;
