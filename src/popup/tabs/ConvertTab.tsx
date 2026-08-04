@@ -171,7 +171,7 @@ export default function ConvertTab({
         error={amountInvalid}
         helperText={
           amountInvalid
-            ? 'Can’t read that yet — keep typing, or check the expression.'
+            ? "Can't read that yet — keep typing, or check the expression."
             : 'Supports math, e.g. 12 + 4.50'
         }
       />

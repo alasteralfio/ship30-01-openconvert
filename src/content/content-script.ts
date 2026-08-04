@@ -394,7 +394,7 @@ function handleConvertSelection(text: string): void {
     return;
   }
   showOverlayCard({
-    tag: 'Converted',
+    tag: 'Convert',
     label: trimmed.length > 30 ? `${trimmed.slice(0, 30)}…` : trimmed,
     value: `${formatNumber(value, settings.numberFormat, settings.precision)} ${target}`,
     sub: `${currency} → ${target}`,
@@ -421,7 +421,7 @@ function handleConvertColumn(): void {
   const cell = lastRightClicked?.closest('td, th') as HTMLTableCellElement | null;
   const table = cell?.closest('table');
   if (!cell || !table) {
-    showOverlayCard({ tag: 'Table column', value: 'Right-click a table cell' });
+    showOverlayCard({ tag: 'Column total', value: 'Right-click a table cell' });
     return;
   }
   const index = cell.cellIndex;

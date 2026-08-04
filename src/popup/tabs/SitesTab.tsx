@@ -2,6 +2,7 @@
 // the global kill switch (settings.enabled); turning it off greys every control below.
 // Display mode + highlight + currency filter + per-site rules all gate on it.
 
+import { useEffect, useRef } from 'react';
 import Stack from '@mui/material/Stack';
 import Box from '@mui/material/Box';
 import Typography from '@mui/material/Typography';
@@ -21,10 +22,13 @@ interface Props {
 }
 
 export default function SitesTab({ settings, host, codes, update }: Props) {
-  const gated = {
-    opacity: settings.enabled ? 1 : 0.45,
-    pointerEvents: settings.enabled ? 'auto' : 'none',
-  } as const;
+  // `inert` (not yet in React's HTML attribute types) keeps this section fully out of
+  // the tab order and unclickable while greyed, not just visually dimmed — pointer-events
+  // alone left every control beneath still reachable and operable by keyboard.
+  const gatedRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (gatedRef.current) gatedRef.current.inert = !settings.enabled;
+  }, [settings.enabled]);
 
   return (
     <Stack spacing={1.5}>
@@ -45,7 +49,12 @@ export default function SitesTab({ settings, host, codes, update }: Props) {
         }
       />
 
-      <Stack spacing={1.5} aria-disabled={!settings.enabled} sx={gated}>
+      <Stack
+        ref={gatedRef}
+        spacing={1.5}
+        aria-disabled={!settings.enabled}
+        sx={{ opacity: settings.enabled ? 1 : 0.45 }}
+      >
         <Box>
           <Typography variant="subtitle2" gutterBottom>
             Display mode

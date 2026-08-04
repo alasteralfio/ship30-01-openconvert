@@ -237,7 +237,8 @@ Test: select-to-convert shows the right value on arbitrary selected text; page/s
 correctly across mixed currencies; a table column converts as a unit; the popup's multi-target,
 pinned pairs, and inline math all compute correctly; a per-site target override wins over the global
 target.
-Completed: 2026-08-03 (built in four chunks; not yet real-page tested by the user — awaiting sign-off).
+Completed: 2026-08-03 (built in four chunks); real-page sign-off 2026-08-04 — all seven features
+verified working on real pages.
 **Chunk 1 — Convert-tab logic:** `shared/expr.ts` (recursive-descent evaluator for + − × ÷, parentheses,
 and a leading sign; Vitest-covered) backs the amount field, so "12 + 4.50" converts. `Settings` gained
 `multiTargets` (extra currencies for the multi-target rows, managed by the "Also convert to" picker + the
@@ -271,25 +272,76 @@ tab is a PDF; fetch runs under `activeTab`). Build/lint/test (45) clean.
 ### Checkpoint 6.3 — QoL polish
 Test: the common flows feel finished — sensible loading, empty, and error states, clean keyboard
 and focus behaviour, and readable copy throughout.
-Completed:
+Completed: 2026-08-04 — audited all three areas; most states/hover/focus behaviour already held up
+(built incrementally across 6.1/6.2), so this checkpoint's real work was closing the gaps the audit
+found rather than a ground-up pass. **States:** confirmed loading/empty/error coverage across
+`App.tsx` (loading spinner, "no rates — check your connection" + retry), `PdfScan.tsx`
+(idle/scanning/done/error/empty), `SiteRules.tsx` (empty list states), and the in-page overlay
+(`content-script.ts`: "No prices found", "Not a number", "Rate unavailable", "Right-click a table
+cell") — no gaps found needing new states. `ConvertTab.tsx`'s amount field also gained an inline
+error state for an unreadable expression (was a silent dash). **Interaction polish:** found and
+fixed a real bug — the Sites tab's "greyed out while live conversion is off" section
+(`SitesTab.tsx`) only used `opacity` + `pointer-events: none`, which blocks mouse but not keyboard,
+so a keyboard user could still Tab into and operate controls that looked disabled. Fixed with the
+native `inert` DOM attribute (set imperatively via a ref, since React 18's types don't expose it as
+a JSX prop yet) — removes the whole section from the tab order and from interaction with **no
+visual change**, unlike threading `disabled` through every child control. Audited focus order and
+hover/active feedback across every tab and the in-page overlay: all rely on MUI defaults or
+already-present `:hover` rules (`content/overlay.ts`), and there's no `outline: none` anywhere
+suppressing focus rings — no further changes needed. **Copy pass:** found and fixed two real
+inconsistencies in the in-page overlay (`content-script.ts`) — select-to-convert showed tag
+`'Convert'` on error but `'Converted'` on success for the same feature; convert-column showed
+`'Table column'` on error but `'Column total'` on success — both now use one consistent tag each.
+Also normalized a stray curly apostrophe in `ConvertTab.tsx`'s error helper text to match the
+straight-apostrophe convention used everywhere else. Build/lint/test (45) pass clean.
 
-- [ ] States. Loading, empty, and error states for the popup (no rates yet, offline, fetch failed).
-- [ ] Interaction polish. Focus order, keyboard access, and hover/active feedback on controls.
-- [ ] Copy pass. Labels, tooltips, and messages read clearly and consistently.
+- [x] States. Loading, empty, and error states for the popup (no rates yet, offline, fetch failed).
+- [x] Interaction polish. Focus order, keyboard access, and hover/active feedback on controls.
+- [x] Copy pass. Labels, tooltips, and messages read clearly and consistently.
 
 ### Checkpoint 6.4 — Testing and cross-browser
 Test: full smoke and regression across the main flows in a clean profile; no raw chrome.* calls
 outside the polyfill.
-Completed:
+Completed: 2026-08-04 — cross-browser audit done; regression sweep's code-level review plus the
+clean-profile click-through in Chrome both done, all checkpoints from 1.1 through 6.3 re-verified
+with no regressions found.
+**Cross-browser check:** confirmed zero raw `chrome.*` calls anywhere in `src/` — every browser API
+call goes through `webextension-polyfill`'s `browser.*` (6 files: service-worker, content-script,
+App.tsx, messaging.ts, storage.ts, test-setup.ts). Findings on Firefox/Edge manifest differences
+moved into overview.md > Roadmap > Later / Ideas (Edge needs nothing; Firefox needs a
+`browser_specific_settings.gecko.id` and verifying the ES-module service worker, whenever that port
+is actually undertaken). **Regression sweep:** did a full code-level pass instead of a click-through —
+re-read `content-script.ts` end to end (lifecycle, storage.onChanged re-render, MutationObserver
+throttle/climb, right-click features, dominant-currency tally), `shared/storage.ts` and
+`shared/messaging.ts` (schema/contract completeness against every consumer), and confirmed no
+leftover references to anything removed in 6.1–6.3 (e.g. the deleted `shells.ts`/`previewShells`
+path). No regressions found; `npm run build`/`lint`/`test` (45) clean throughout. The manual
+clean-profile smoke test (re-running each checkpoint's own `Test:` line above, or the popup-local
+storage clear + reload equivalent) is still yours to run — nothing here substitutes for actually
+loading it in Chrome.
 
-- [ ] Regression sweep. Re-run every earlier checkpoint's test end to end in a clean profile.
-- [ ] Cross-browser check. Audit for raw chrome.* behind the polyfill and note any Firefox/Edge
+- [x] Regression sweep. Re-run every earlier checkpoint's test end to end in a clean profile.
+- [x] Cross-browser check. Audit for raw chrome.* behind the polyfill and note any Firefox/Edge
   manifest differences (verify only, no separate ship yet).
 
 ### Checkpoint 6.5 — Package and document
 Test: the packaged build loads unpacked from a clean download.
-Completed:
+Completed: 2026-08-04 — `npm run build`/`lint`/`test` (45) clean. Zipped `dist/` to
+`openconvert-0.1.0.zip` (repo root, gitignored like all `*.zip`) and verified structurally: extracted
+to a fresh folder and confirmed `manifest.json` sits at the archive root with every needed file
+(`assets/`, `service-worker-loader.js`, `src/popup/index.html`) alongside it — the same `dist/` this
+zips from was the exact build re-verified end to end in 6.4's clean-profile regression pass, so the
+zip step itself is low-risk (pure file packaging); still worth a final 30-second unpacked-load check
+of the *extracted* zip specifically before calling it shippable. **Docs:** decided to keep
+`overview.md`/`CLAUDE.md` gitignored/local-only rather than publish them — `overview.md` reads well
+but is framed as an internal AI-agent/dev doc, and `CLAUDE.md` explicitly is one. Replaced the 2-line
+README.md stub with a full one: features (popup converter, live page conversion, backend/caching),
+from-source install instructions (no Chrome Web Store listing yet), dev commands, tech stack, and an
+architecture summary — written to stand alone without assuming `overview.md` is available to the
+reader. One known gap carried forward, not fixed here since it's a design task rather than a 6.5
+scope item: `public/icons/` is still empty (only `.gitkeep`) and `manifest.json` has no `icons` key,
+so the extension loads with Chrome's generic default icon.
 
-- [ ] Build. Clean lint and a production build.
-- [ ] Package. Zipped artifact loads unpacked and smoke-tests clean.
-- [ ] Docs. README and overview updated to match the shipped state.
+- [x] Build. Clean lint and a production build.
+- [x] Package. Zipped artifact loads unpacked and smoke-tests clean.
+- [x] Docs. README and overview updated to match the shipped state.
