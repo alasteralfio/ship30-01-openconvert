@@ -13,6 +13,13 @@ const underTest = process.env.VITEST !== undefined;
 // outputs, and emits an unpacked extension to dist/. See overview.md > Architecture.
 export default defineConfig({
   plugins: underTest ? [] : [react(), crx({ manifest })],
+  build: {
+    // Don't inject <link rel="modulepreload"> into the popup HTML. On the popup's
+    // chrome-extension:// origin those preloads never resolve to a used resource
+    // (Chrome logs "cross-world resource mismatch / preloaded but not used"), and the
+    // popup loads its chunks on open anyway — there's nothing to gain from preloading.
+    modulePreload: false,
+  },
   test: {
     environment: 'node',
     include: ['src/**/*.test.ts'],
