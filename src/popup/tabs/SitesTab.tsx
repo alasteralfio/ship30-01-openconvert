@@ -31,7 +31,7 @@ export default function SitesTab({ settings, host, codes, update }: Props) {
   }, [settings.enabled]);
 
   return (
-    <Stack spacing={1.5}>
+    <Stack spacing={1}>
       <FormControlLabel
         control={
           <Switch
@@ -51,7 +51,7 @@ export default function SitesTab({ settings, host, codes, update }: Props) {
 
       <Stack
         ref={gatedRef}
-        spacing={1.5}
+        spacing={1}
         aria-disabled={!settings.enabled}
         sx={{ opacity: settings.enabled ? 1 : 0.45 }}
       >

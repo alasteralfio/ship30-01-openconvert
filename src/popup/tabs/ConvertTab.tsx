@@ -10,7 +10,6 @@ import TextField from '@mui/material/TextField';
 import IconButton from '@mui/material/IconButton';
 import Tooltip from '@mui/material/Tooltip';
 import Typography from '@mui/material/Typography';
-import Divider from '@mui/material/Divider';
 import Chip from '@mui/material/Chip';
 import MyLocationIcon from '@mui/icons-material/MyLocation';
 import SwapVertIcon from '@mui/icons-material/SwapVert';
@@ -92,7 +91,7 @@ export default function ConvertTab({
   };
 
   return (
-    <Stack spacing={1.5}>
+    <Stack spacing={1}>
       <Stack direction="row" alignItems="center" justifyContent="space-between">
         <Typography variant="subtitle2" color="text.secondary">
           Convert
@@ -160,30 +159,31 @@ export default function ConvertTab({
         </Box>
       )}
 
-      <TextField
-        label="Amount"
-        value={amount}
-        onChange={(e) => setAmount(e.target.value)}
-        // Takes a plain number or a math expression (see shared/expr).
-        type="text"
-        inputMode="decimal"
-        fullWidth
-        error={amountInvalid}
-        helperText={
-          amountInvalid
-            ? "Can't read that yet — keep typing, or check the expression."
-            : 'Supports math, e.g. 12 + 4.50'
-        }
-      />
+      {/* Row 1: amount in, source currency. Math expressions are accepted (shared/expr). */}
+      <Stack direction="row" spacing={1} alignItems="flex-start">
+        <TextField
+          label="Amount"
+          value={amount}
+          onChange={(e) => setAmount(e.target.value)}
+          type="text"
+          inputMode="decimal"
+          error={amountInvalid}
+          helperText={amountInvalid ? "Can't read that" : undefined}
+          fullWidth
+          sx={{ flex: 1 }}
+        />
+        <Box sx={{ flex: 1 }}>
+          <CurrencyCombobox
+            label="From"
+            value={settings.source}
+            codes={codes}
+            // A manual source change permanently locks out per-page auto-detect.
+            onChange={(code) => update({ source: code, sourceManuallySet: true })}
+          />
+        </Box>
+      </Stack>
 
-      <CurrencyCombobox
-        label="From"
-        value={settings.source}
-        codes={codes}
-        // A manual source change permanently locks out per-page auto-detect.
-        onChange={(code) => update({ source: code, sourceManuallySet: true })}
-      />
-
+      {/* Row 2: swap */}
       <Box sx={{ display: 'flex', justifyContent: 'center' }}>
         <Tooltip title="Swap source and target">
           <IconButton
@@ -202,27 +202,25 @@ export default function ConvertTab({
         </Tooltip>
       </Box>
 
-      <CurrencyCombobox
-        label="To"
-        value={settings.target}
-        codes={codes}
-        onChange={(code) => update({ target: code })}
-      />
-
-      <Divider />
-
-      {/* Primary result */}
-      <Box>
-        <Typography variant="caption" color="text.secondary">
-          {amountNum === null
-            ? '—'
-            : formatNumber(amountNum, settings.numberFormat, settings.precision)}{' '}
-          {settings.source} =
-        </Typography>
-        <Typography variant="h5" sx={{ fontWeight: 700, lineHeight: 1.2 }}>
-          {primary === null ? '—' : `${primary} ${settings.target}`}
-        </Typography>
-      </Box>
+      {/* Row 3: converted result out, target currency. Read-only TextField so it matches
+          the amount field above exactly — same box size and font. */}
+      <Stack direction="row" spacing={1} alignItems="flex-start">
+        <TextField
+          label="Result"
+          value={primary === null ? '—' : primary}
+          InputProps={{ readOnly: true }}
+          fullWidth
+          sx={{ flex: 1 }}
+        />
+        <Box sx={{ flex: 1 }}>
+          <CurrencyCombobox
+            label="To"
+            value={settings.target}
+            codes={codes}
+            onChange={(code) => update({ target: code })}
+          />
+        </Box>
+      </Stack>
 
       {/* The same amount in each extra currency */}
       {multiTargets.map((code) => {

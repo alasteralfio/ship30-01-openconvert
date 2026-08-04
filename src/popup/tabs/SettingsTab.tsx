@@ -23,10 +23,9 @@ export default function SettingsTab({ settings, update }: Props) {
   const [howTo, setHowTo] = useState(false);
 
   return (
-    <Stack spacing={2}>
+    <Stack spacing={1}>
       <Button
         variant="contained"
-        size="large"
         startIcon={<HelpOutlineIcon />}
         onClick={() => setHowTo(true)}
         fullWidth

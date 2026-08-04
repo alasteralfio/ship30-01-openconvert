@@ -26,7 +26,7 @@ export default function FromFilter({ value, codes, onChange }: Props) {
   return (
     <Card variant="outlined">
       <CardContent sx={{ '&:last-child': { pb: 2 } }}>
-        <Stack spacing={1.5}>
+        <Stack spacing={1}>
           <Box>
             <Typography variant="subtitle2">Currency filter</Typography>
             <Typography variant="caption" color="text.secondary">

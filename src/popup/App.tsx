@@ -113,8 +113,17 @@ export default function App() {
   const codes = useMemo(() => (rates ? Object.keys(rates.rates).sort() : []), [rates]);
 
   return (
-    <Box sx={{ width: 360, bgcolor: 'background.default', p: 1.5 }}>
-      <Box sx={{ display: 'flex', justifyContent: 'center', mb: 1.5 }}>
+    <Box
+      sx={{
+        width: 512,
+        height: 320,
+        bgcolor: 'background.default',
+        p: 1.5,
+        display: 'flex',
+        flexDirection: 'column',
+      }}
+    >
+      <Box sx={{ display: 'flex', justifyContent: 'center', mb: 1, flexShrink: 0 }}>
         <ToggleButtonGroup
           value={tab}
           exclusive
@@ -138,7 +147,7 @@ export default function App() {
         </ToggleButtonGroup>
       </Box>
 
-      <Card sx={{ p: 1.5 }}>
+      <Card sx={{ p: 1.5, flex: 1, minHeight: 0, overflowY: 'auto' }}>
         {status === 'loading' || !settings ? (
           <Stack alignItems="center" spacing={1} sx={{ py: 4 }}>
             <CircularProgress size={22} />
@@ -147,7 +156,7 @@ export default function App() {
             </Typography>
           </Stack>
         ) : status === 'no-rates' || !rates ? (
-          <Stack spacing={1.5} sx={{ py: 2 }}>
+          <Stack spacing={1} sx={{ py: 2 }}>
             <Typography variant="body2">
               No exchange rates yet — check your connection.
             </Typography>

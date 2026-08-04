@@ -79,7 +79,7 @@ export default function SiteRules({ settings, host, codes, onChange }: Props) {
   return (
     <Card variant="outlined">
       <CardContent sx={{ '&:last-child': { pb: 2 } }}>
-        <Stack spacing={1.5}>
+        <Stack spacing={1}>
           <Box>
             <Typography variant="subtitle2">Per-site rules</Typography>
             <Typography variant="caption" color="text.secondary">
@@ -149,21 +149,22 @@ export default function SiteRules({ settings, host, codes, onChange }: Props) {
             </Typography>
           )}
 
+          {/* Column order mirrors the mode toggle above: Blacklist left, Whitelist right. */}
           <Stack direction="row" spacing={1}>
-            <ListColumn
-              title="Whitelist"
-              sites={settings.whitelist}
-              active={mode === 'whitelist'}
-              onRemove={(site) =>
-                onChange({ whitelist: settings.whitelist.filter((s) => s !== site) })
-              }
-            />
             <ListColumn
               title="Blacklist"
               sites={settings.blacklist}
               active={mode === 'blacklist'}
               onRemove={(site) =>
                 onChange({ blacklist: settings.blacklist.filter((s) => s !== site) })
+              }
+            />
+            <ListColumn
+              title="Whitelist"
+              sites={settings.whitelist}
+              active={mode === 'whitelist'}
+              onRemove={(site) =>
+                onChange({ whitelist: settings.whitelist.filter((s) => s !== site) })
               }
             />
           </Stack>

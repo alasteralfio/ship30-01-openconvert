@@ -1,14 +1,18 @@
 /* Popup base. The visual system now lives in the MUI theme (src/popup/theme.ts) and
-   CssBaseline; this file only pins the popup body size and hides scrollbars. */
+   CssBaseline; this file only pins the popup box size and hides scrollbars. */
 
+/* Fixed landscape box, 1.6:1. The body never scrolls; the master Card scrolls internally. */
 html,
 body {
   margin: 0;
-  width: 360px;
+  width: 512px;
+  height: 320px;
+  overflow: hidden;
 }
 
 #root {
-  width: 360px;
+  width: 512px;
+  height: 320px;
 }
 
 /* Hide scrollbars everywhere but keep scrolling. A scrollbar that appears only when a
