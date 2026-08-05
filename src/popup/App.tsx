@@ -50,11 +50,16 @@ async function activeTabHost(): Promise<string | null> {
   }
 }
 
-/** The active tab's URL if it's a PDF we can try to read, else null. */
+/**
+ * The active tab's URL if it's a PDF we can try to read, else null. Accepts http(s) and
+ * local file:// PDFs — reading a file:// URL needs the extension's "Allow access to file
+ * URLs" toggle on (chrome://extensions); without it the fetch fails and PdfScan shows its
+ * error, which is the right feedback.
+ */
 async function activeTabPdfUrl(): Promise<string | null> {
   const [tab] = await browser.tabs.query({ active: true, currentWindow: true });
   const url = tab?.url ?? '';
-  return /^https?:\/\//.test(url) && /\.pdf($|[?#])/i.test(url) ? url : null;
+  return /^(https?|file):\/\//.test(url) && /\.pdf($|[?#])/i.test(url) ? url : null;
 }
 
 export default function App() {

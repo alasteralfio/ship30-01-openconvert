@@ -29,3 +29,7 @@ Thumbs.db
 # Docs
 overview.md
 CLAUDE.md
+
+# Local test artifacts (generated PDFs etc. for manual detection testing)
+openconvert-test-report.pdf
+*.test.pdf
