@@ -48,6 +48,16 @@ const DIRECT_SYMBOLS: Readonly<Record<string, string>> = {
   '₱': 'PHP',
   '₫': 'VND',
   '₪': 'ILS',
+  '円': 'JPY', // Japanese retail sites (e.g. Rakuten) favour this over ¥
+  '원': 'KRW', // Korean retail sites favour this over ₩
+  TL: 'TRY', // long-standing Turkish Lira abbreviation, still more common than ₺
+  '₭': 'LAK',
+  '₮': 'MNT',
+  '₲': 'PYG',
+  '₵': 'GHS',
+  '₸': 'KZT',
+  '₼': 'AZN',
+  '₾': 'GEL',
 };
 
 // Explicit qualifiers pin an otherwise-ambiguous `$` to one currency (priority 1).
@@ -67,8 +77,9 @@ const QUALIFIERS: Readonly<Record<string, string>> = {
   NT$: 'TWD',
 };
 
-// Symbol alternatives, longest first so `US$` wins over a bare `$`. `kr` is the
-// only alphabetic glyph, so it carries letter guards in the assembled pattern.
+// Symbol alternatives, longest first so `US$` wins over a bare `$`. The assembled
+// pattern's letter guards apply to every symbol here, so alphabetic ones (kr, RM, TL…)
+// still can't match inside a larger word.
 const SYMBOLS = [
   'US\\$',
   'U\\$',
@@ -87,6 +98,8 @@ const SYMBOLS = [
   // Nordic "kr."). The optional dot is stripped during resolution.
   'Rp\\.?',
   'RM\\.?',
+  'TL\\.?',
+  'Rs\\.?',
   'zł\\.?',
   'Kč\\.?',
   'kr\\.?',
@@ -96,6 +109,7 @@ const SYMBOLS = [
   '£', // £
   '¥', // ¥
   '₹', // INR
+  '₨', // generic rupee sign — PKR/LKR/NPR/INR/MUR
   '₩', // KRW
   '₽', // RUB
   '฿', // THB
@@ -105,7 +119,25 @@ const SYMBOLS = [
   '₱', // PHP
   '₫', // VND
   '₪', // ILS
-].join('|');
+  '円', // JPY (kanji, common on JP retail sites alongside ¥)
+  '원', // KRW (Hangul, common on KR retail sites alongside ₩)
+  '元', // ambiguous CNY/TWD — suffix-only, see PREFIX_SYMBOLS below
+  '₭', // LAK
+  '₮', // MNT
+  '₲', // PYG
+  '₵', // GHS
+  '₸', // KZT
+  '₼', // AZN
+  '₾', // GEL
+];
+
+// 元 is excluded from the prefix form. Chinese web text routinely writes years as
+// "公元2024" ("CE 2024") — 元 directly before a number there, never a price — while a
+// real CNY price is always written the other way round, "299元". Restricting 元 to the
+// suffix form only loses nothing (that's the only order it's ever used for pricing)
+// and drops the collision entirely.
+const PREFIX_SYMBOLS = SYMBOLS.filter((s) => s !== '元').join('|');
+const SUFFIX_SYMBOLS = SYMBOLS.join('|');
 
 // A number with common thousands/decimal formats: 1,299.99 · 1.299,99 · 1 299,00
 // · 10,000 · 1234.56 · 100. Disambiguation of `.` vs `,` happens in parseAmount.
@@ -114,8 +146,8 @@ const NUM = '\\d+(?:[.,\\u00A0\\u202F ]\\d{3})*(?:[.,]\\d+)?';
 // Four placements: symbol|code before or after the number. Letter lookarounds keep
 // glyphs/codes from matching inside words (e.g. `kr` in "darkroom", `EUR` in "EURO").
 const PATTERN = [
-  `(?<![A-Za-z])(?<sym1>${SYMBOLS})[\\s\\u00A0]?(?<num1>${NUM})`,
-  `(?<num2>${NUM})[\\s\\u00A0]?(?<sym2>${SYMBOLS})(?![A-Za-z])`,
+  `(?<![A-Za-z])(?<sym1>${PREFIX_SYMBOLS})[\\s\\u00A0]?(?<num1>${NUM})`,
+  `(?<num2>${NUM})[\\s\\u00A0]?(?<sym2>${SUFFIX_SYMBOLS})(?![A-Za-z])`,
   `(?<![A-Za-z])(?<code1>[A-Z]{3})(?![A-Za-z])[\\s\\u00A0]?(?<num3>${NUM})`,
   `(?<num4>${NUM})[\\s\\u00A0]?(?<![A-Za-z])(?<code2>[A-Z]{3})(?![A-Za-z])`,
 ].join('|');
@@ -157,25 +189,40 @@ function decideSingleSeparator(s: string, sep: string): string {
   return parts[1].length === 3 ? parts.join('') : parts.join('.');
 }
 
-/** Map an ambiguous glyph to a currency by TLD, then language. */
+// TLD-based disambiguation for ambiguous glyphs, checked before falling back to the
+// first-listed (documented default) candidate. `Rs` and `₨` are the same ambiguity.
+const RUPEE_TLDS: readonly (readonly [string, string])[] = [
+  ['.pk', 'PKR'],
+  ['.lk', 'LKR'],
+  ['.np', 'NPR'],
+  ['.mu', 'MUR'],
+  ['.in', 'INR'],
+];
+const TLD_HINTS: Readonly<Record<string, readonly (readonly [string, string])[]>> = {
+  $: [
+    ['.ca', 'CAD'],
+    ['.au', 'AUD'],
+    ['.nz', 'NZD'],
+    ['.mx', 'MXN'],
+    ['.sg', 'SGD'],
+    ['.hk', 'HKD'],
+  ],
+  kr: [
+    ['.no', 'NOK'],
+    ['.dk', 'DKK'],
+  ],
+  元: [['.tw', 'TWD']],
+  Rs: RUPEE_TLDS,
+  '₨': RUPEE_TLDS,
+};
+
+/** Map an ambiguous glyph to a currency by TLD; ¥ also takes a language hint. */
 function heuristic(symbol: string, host: string, lang: string): string | null {
-  const l = lang.toLowerCase();
-  if (symbol === '$') {
-    if (host.endsWith('.ca')) return 'CAD';
-    if (host.endsWith('.au')) return 'AUD';
-    if (host.endsWith('.nz')) return 'NZD';
-    if (host.endsWith('.mx')) return 'MXN';
-    if (host.endsWith('.sg')) return 'SGD';
-    if (host.endsWith('.hk')) return 'HKD';
-    return 'USD';
+  if (symbol === '¥' && (lang.toLowerCase().startsWith('zh') || host.endsWith('.cn'))) {
+    return 'CNY';
   }
-  if (symbol === '¥') {
-    return l.startsWith('zh') || host.endsWith('.cn') ? 'CNY' : 'JPY';
-  }
-  if (symbol === 'kr') {
-    if (host.endsWith('.no')) return 'NOK';
-    if (host.endsWith('.dk')) return 'DKK';
-    return 'SEK';
+  for (const [suffix, currency] of TLD_HINTS[symbol] ?? []) {
+    if (host.endsWith(suffix)) return currency;
   }
   return null;
 }
@@ -194,8 +241,8 @@ function resolveSymbol(raw: string, ctx: DetectionContext): string | null {
     // 3. host/language heuristic
     const guessed = heuristic(symbol, ctx.host, ctx.lang);
     if (guessed) return guessed;
-    // 4. documented default
-    return SYMBOL_DEFAULTS[symbol] ?? candidates[0];
+    // 4. first-listed candidate is the documented default (see AMBIGUOUS_SYMBOLS)
+    return candidates[0];
   }
   return SYMBOL_DEFAULTS[symbol] ?? null; // unique glyph (£, €)
 }

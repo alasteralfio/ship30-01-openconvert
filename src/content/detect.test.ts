@@ -23,6 +23,21 @@ const KNOWN = new Set([
   'THB',
   'MYR',
   'PLN',
+  'CZK',
+  'KRW',
+  'TRY',
+  'TWD',
+  'PKR',
+  'LKR',
+  'NPR',
+  'MUR',
+  'LAK',
+  'MNT',
+  'PYG',
+  'GHS',
+  'KZT',
+  'AZN',
+  'GEL',
 ]);
 
 function ctx(over: Partial<DetectionContext> = {}): DetectionContext {
@@ -84,6 +99,50 @@ describe('detectPrices', () => {
     expect(detectPrices('₹1,299', ctx())[0]).toMatchObject({ currency: 'INR', amount: 1299 });
     expect(detectPrices('฿250.50', ctx())[0]).toMatchObject({ currency: 'THB', amount: 250.5 });
     expect(detectPrices('RM 88', ctx())[0]).toMatchObject({ currency: 'MYR', amount: 88 });
+    expect(detectPrices('Kč655', ctx())[0]).toMatchObject({ currency: 'CZK', amount: 655 });
+  });
+
+  it('detects the kanji yen glyph, distinct from the ambiguous ¥', () => {
+    expect(detectPrices('3,780円', ctx())[0]).toMatchObject({ currency: 'JPY', amount: 3780 });
+    expect(detectPrices('3,500円', ctx({ lang: 'zh-CN' }))[0]).toMatchObject({
+      currency: 'JPY', // unlike ¥, 円 is unambiguous even with a Chinese-language hint
+      amount: 3500,
+    });
+  });
+
+  it('detects the Hangul won glyph and the "TL" Turkish Lira abbreviation', () => {
+    expect(detectPrices('27,780원', ctx())[0]).toMatchObject({ currency: 'KRW', amount: 27780 });
+    expect(detectPrices('299,90 TL', ctx())[0]).toMatchObject({ currency: 'TRY', amount: 299.9 });
+  });
+
+  it('does not let "TL" match inside a larger word', () => {
+    expect(detectPrices('100 TLC', ctx())).toHaveLength(0);
+  });
+
+  it('detects further minor-currency symbols with no ambiguity to resolve', () => {
+    expect(detectPrices('₭50,000', ctx())[0]).toMatchObject({ currency: 'LAK', amount: 50000 });
+    expect(detectPrices('₮25,000', ctx())[0]).toMatchObject({ currency: 'MNT', amount: 25000 });
+    expect(detectPrices('₲15,000', ctx())[0]).toMatchObject({ currency: 'PYG', amount: 15000 });
+    expect(detectPrices('₵50', ctx())[0]).toMatchObject({ currency: 'GHS', amount: 50 });
+    expect(detectPrices('₸1,500', ctx())[0]).toMatchObject({ currency: 'KZT', amount: 1500 });
+    expect(detectPrices('₼25', ctx())[0]).toMatchObject({ currency: 'AZN', amount: 25 });
+    expect(detectPrices('₾30', ctx())[0]).toMatchObject({ currency: 'GEL', amount: 30 });
+  });
+
+  it('resolves the rupee ambiguity ("Rs" and "₨") by TLD, defaulting to PKR', () => {
+    expect(detectPrices('Rs 500', ctx())[0].currency).toBe('PKR'); // default
+    expect(detectPrices('Rs. 500', ctx())[0].currency).toBe('PKR'); // abbreviation dot
+    expect(detectPrices('₨500', ctx())[0].currency).toBe('PKR');
+    expect(detectPrices('Rs 500', ctx({ host: 'shop.lk' }))[0].currency).toBe('LKR');
+    expect(detectPrices('Rs 500', ctx({ host: 'shop.in' }))[0].currency).toBe('INR');
+  });
+
+  it('resolves the Chinese 元 by TLD, and only reads it after the number', () => {
+    expect(detectPrices('299元', ctx())[0]).toMatchObject({ currency: 'CNY', amount: 299 });
+    expect(detectPrices('299元', ctx({ host: 'shop.tw' }))[0].currency).toBe('TWD');
+    // "公元2024" (CE 2024) is an ordinary year prefix, not a price — 元 before a
+    // number must never match, unlike every other symbol.
+    expect(detectPrices('公元2024年', ctx())).toHaveLength(0);
   });
 
   it('tolerates an abbreviation dot on alphabetic symbols (e.g. "Rp. 60.000")', () => {

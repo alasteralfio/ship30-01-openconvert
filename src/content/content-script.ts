@@ -88,7 +88,12 @@ function applyRender(el: HTMLElement): void {
     return;
   }
 
-  const converted = `${formatNumber(value, settings.numberFormat, settings.precision)} ${target}`;
+  // Keep any text around the matched price (e.g. a "from "/"od " qualifier on a
+  // split-element price) instead of dropping it — m.start/end are 0/length for a
+  // text-node match, so this is a no-op there.
+  const prefix = original.slice(0, m.start);
+  const suffix = original.slice(m.end);
+  const converted = `${prefix}${formatNumber(value, settings.numberFormat, settings.precision)} ${target}${suffix}`;
   if (settings.displayMode === 'hover') {
     el.textContent = original; // original stays visible
     el.title = converted; // converted revealed on hover
@@ -154,19 +159,18 @@ function scanTextNodes(root: Node): void {
 }
 
 /**
- * A single price occupying (essentially) an element's whole text — e.g. a shop's
- * price split across `<span>S$</span><span>12</span><span>34</span>`, where no one
- * text node holds the full price. Returns that match, or null.
+ * A single price occupying an element's text — e.g. a shop's price split across
+ * `<span>S$</span><span>12</span><span>34</span>`, where no one text node holds the
+ * full price. Also matches when a qualifier word sits alongside it ("od 655 Kč",
+ * "from $19.99") — applyRender keeps that surrounding text via the match's
+ * start/end. Returns the element's trimmed text plus the one match found, or null.
  */
-function fullPriceMatch(el: Element): PriceMatch | null {
+function fullPriceMatch(el: Element): { text: string; match: PriceMatch } | null {
   const raw = el.textContent ?? '';
   if (raw.length === 0 || raw.length > MAX_PRICE_LEN) return null;
   const trimmed = raw.trim();
   const matches = detectPrices(trimmed, ctx);
-  if (matches.length === 1 && matches[0].start === 0 && matches[0].end === trimmed.length) {
-    return matches[0];
-  }
-  return null;
+  return matches.length === 1 ? { text: trimmed, match: matches[0] } : null;
 }
 
 /**
@@ -175,7 +179,7 @@ function fullPriceMatch(el: Element): PriceMatch | null {
  * are already wrapped (and skipped here via CONVERTED_ATTR).
  */
 function scanSplitPrices(root: Element): void {
-  const candidates: { el: Element; m: PriceMatch }[] = [];
+  const candidates: { el: Element; text: string; m: PriceMatch }[] = [];
   for (const el of root.querySelectorAll('*')) {
     if (el.closest(`[${CONVERTED_ATTR}]`)) continue;
     // Skip a container whose text is derived from an already-converted child —
@@ -183,18 +187,18 @@ function scanSplitPrices(root: Element): void {
     // gets re-processed (double conversion / lost styling).
     if (el.querySelector(`[${CONVERTED_ATTR}]`)) continue;
     if (SKIP_TAGS.has(el.tagName) || (el as HTMLElement).isContentEditable) continue;
-    const m = fullPriceMatch(el);
-    if (m) candidates.push({ el, m });
+    const found = fullPriceMatch(el);
+    if (found) candidates.push({ el, text: found.text, m: found.match });
   }
   // Keep only the innermost matches so we rewrite `<span>S$12.34</span>`, not a wrapper.
   const innermost = candidates.filter(
     ({ el }) => !candidates.some((o) => o.el !== el && el.contains(o.el)),
   );
-  for (const { el, m } of innermost) {
+  for (const { el, text, m } of innermost) {
     pageTally[m.currency] = (pageTally[m.currency] ?? 0) + 1;
     const target = el as HTMLElement;
     target.setAttribute(CONVERTED_ATTR, '');
-    target.dataset.ocOriginal = m.text;
+    target.dataset.ocOriginal = text; // full element text, not just the match — keeps any qualifier word
     applyRender(target);
   }
 }

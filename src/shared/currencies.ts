@@ -29,19 +29,21 @@ export function getCurrencySymbol(code: string, locale = 'en'): string {
 /**
  * Glyphs shared by several currencies, listing candidates in priority order (first =
  * fallback default). Detection combines this with explicit qualifiers (US$, CA$…) and
- * the page's TLD/lang to decide which one a given price is in.
+ * the page's TLD/lang to decide which one a given price is in. `Rs`/`₨` are the same
+ * ambiguity (a handful of South Asian currencies all use "rupee") written two ways.
  */
 export const AMBIGUOUS_SYMBOLS: Readonly<Record<string, readonly string[]>> = {
   $: ['USD', 'CAD', 'AUD', 'NZD', 'HKD', 'SGD', 'MXN'],
   '¥': ['JPY', 'CNY'],
   kr: ['SEK', 'NOK', 'DKK'],
+  元: ['CNY', 'TWD'],
+  Rs: ['PKR', 'LKR', 'NPR', 'INR', 'MUR'],
+  '₨': ['PKR', 'LKR', 'NPR', 'INR', 'MUR'],
 };
 
-/** Documented fallback currency for a glyph when it can't be disambiguated. */
+/** Fallback for a unique glyph with no ambiguity to resolve (ambiguous glyphs default
+ * to the first entry in their AMBIGUOUS_SYMBOLS list instead). */
 export const SYMBOL_DEFAULTS: Readonly<Record<string, string>> = {
-  $: 'USD',
-  '¥': 'JPY',
-  kr: 'SEK',
   '£': 'GBP',
   '€': 'EUR',
 };
