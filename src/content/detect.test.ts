@@ -38,6 +38,7 @@ const KNOWN = new Set([
   'KZT',
   'AZN',
   'GEL',
+  'VND',
 ]);
 
 function ctx(over: Partial<DetectionContext> = {}): DetectionContext {
@@ -148,6 +149,22 @@ describe('detectPrices', () => {
   it('tolerates an abbreviation dot on alphabetic symbols (e.g. "Rp. 60.000")', () => {
     expect(detectPrices('Rp. 60.000', ctx())[0]).toMatchObject({ currency: 'IDR', amount: 60000 });
     expect(detectPrices('kr. 149', ctx())[0]).toMatchObject({ currency: 'SEK', amount: 149 });
+  });
+
+  it('detects the Vietnamese dong sign in real thousands-grouped formats', () => {
+    expect(detectPrices('150.000₫', ctx())[0]).toMatchObject({ currency: 'VND', amount: 150000 });
+    expect(detectPrices('1.500.000 ₫', ctx())[0]).toMatchObject({
+      currency: 'VND',
+      amount: 1500000,
+    });
+  });
+
+  it('does not treat the Vietnamese letter "đ" as a currency mark', () => {
+    // "đ" (Latin letter D with stroke, U+0111) is distinct from the dong sign "₫"
+    // (U+20AB) above. It's intentionally unsupported: "đ" starts ordinary Vietnamese
+    // words (đến = "to/until"), and our letter guard only recognises A-Za-z, so
+    // treating "đ" as a symbol would misread "20 đến" as a 20-dong price.
+    expect(detectPrices('20 đến 25', ctx())).toHaveLength(0);
   });
 
   it('uses a single from-filter candidate to disambiguate a glyph', () => {
