@@ -168,7 +168,6 @@ export default function ConvertTab({
           type="text"
           inputMode="decimal"
           error={amountInvalid}
-          helperText={amountInvalid ? "Can't read that" : undefined}
           fullWidth
           sx={{ flex: 1 }}
         />
