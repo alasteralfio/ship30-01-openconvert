@@ -1,86 +1,61 @@
 # OpenConvert
 
-Open-source **Manifest V3** Chrome extension that converts currencies — a quick popup converter,
-plus the headline feature: it scans any web page and rewrites the prices it finds into your target
-currency, live, right where they sit. Everything runs client-side; there's no backend, no accounts,
-no tracking.
+An open-source Manifest V3 Chrome extension that converts currencies by rewriting prices live on the web pages you visit, along with a standard popup converter. Everything runs locally on your machine, so there are no accounts and no privacy concerns.
+
+## Install
+
+- Chrome Web Store: coming soon
+- [Build it from source](#installation-from-source)
 
 ## Features
 
-**Popup converter**
-- Live source → target conversion as you type, with a swap button and pinned quick-swap pairs
-- Multi-target view — see one amount converted into several currencies at once
-- Inline math in the amount field (`12 + 4.50`) for tallying items by hand
-- Auto-detects the page's dominant currency as the source (until you set one manually)
-- Reads prices out of PDF invoices open in the active tab (via PDF.js) and lists them converted
+### Popup Converter
 
-**Live page conversion**
-- Detects currency symbols, qualifiers (`US$`, `CA$`, …), and ISO codes, with locale-aware
-  disambiguation for shared symbols like `$` and `¥`
-- Rewrites matched prices in place — original kept on hover — and keeps up with dynamic/SPA pages
-  via a throttled `MutationObserver`
-- Right-click a selection or page to convert it, total it, or total an entire table column
-- Per-site allow/deny lists (blacklist or whitelist mode) and a per-site target-currency override
-- A from-currency filter to restrict which source currencies get converted
-- Configurable decimal precision and number formatting (`1,234.56` / `1.234,56` / `1 234,56`)
+![OpenConvert popup converter](images/convert.png)
 
-**Backend**
-- One USD-anchored rate table fetched and cached locally (`open.er-api.com`, with a Frankfurter
-  fallback), refreshed on a schedule — every individual conversion is done with local math, never a
-  per-price network call. Falls back to the last cached table when offline.
+- Target conversion as you type, with a swap button and pinned quick-swap pairs
+- See one amount converted into several currencies at once
+- Inline math in the amount field, like `12 + 4.50`, for tallying items by hand
+- Press a button to auto-detect the current page's currency
+- Reads prices out of PDFs and pulls them into the popup. PDFs can't be live-converted the way web pages are, since the built-in viewer doesn't allow it.
 
-## Installing (from source)
+### Live Page Conversion
 
-OpenConvert isn't published to the Chrome Web Store yet — load it unpacked:
+![OpenConvert live page conversion settings](images/sites.png)
 
-```bash
-git clone https://github.com/alasteralfio/ship30-01-openconvert.git
-cd ship30-01-openconvert
-npm install
-npm run build
-```
+- Detects currency symbols, qualifiers, and ISO codes, with locale-aware disambiguation for shared symbols like `$` and `¥`
+- Rewrites matched prices in place and keeps the original on hover
+- Per-site allow and deny lists, plus a per-site target currency override
+- A from-currency filter to limit which source currencies get converted
+- Configurable decimal precision and number formatting
 
-Then in Chrome: go to `chrome://extensions`, enable **Developer mode**, click **Load unpacked**, and
-select the generated `dist/` folder.
+## Installation (from source)
+
+If you would rather build it yourself than wait for the store listing:
+
+1. Clone the repo and install dependencies:
+   ```
+   git clone https://github.com/alasteralfio/ship30-01-openconvert.git
+   cd ship30-01-openconvert
+   npm install
+   ```
+2. Build the extension. This writes the unpacked extension to `dist/`:
+   ```
+   npm run build
+   ```
+3. Open `chrome://extensions`, turn on Developer mode (top right), click Load unpacked, and pick the `dist/` folder.
+
+To update later, pull the latest changes, run `npm run build` again, and hit the reload icon on the extension card.
 
 ## Development
 
-```bash
-npm run dev      # watch build with HMR (Vite + @crxjs)
-npm run build    # typecheck + production build to dist/
-npm run lint     # ESLint
-npm run format   # Prettier
-npm test         # Vitest unit tests (npm run test:watch for watch mode)
-```
+- `npm run dev` builds in watch mode while you work
+- `npm run build` produces the production build in `dist/`
+- `npm run lint` runs ESLint
+- `npm test` runs the unit tests
 
-Reload the unpacked extension in `chrome://extensions` after each build to pick up changes.
-
-## Tech stack
-
-TypeScript throughout. The popup is React 18 + Material UI 6; the content script and service worker
-are plain TypeScript with no framework. Built with Vite + `@crxjs/vite-plugin`. Uses
-`webextension-polyfill` (`browser.*`) instead of raw `chrome.*`, so a Firefox/Edge port is mostly a
-manifest change away. Tested with Vitest.
-
-## Architecture
-
-Three cooperating parts, plus shared pure logic:
-
-- **Service worker** — the only network caller. Fetches and caches the rate table, runs the
-  scheduled refresh, and answers `getRates`/`refreshRates` requests.
-- **Content script** — scans the page, converts locally against the cached table, rewrites matched
-  prices in place, and re-scans dynamic content.
-- **Popup** (React) — the quick converter and all settings, reading/writing `browser.storage` and
-  messaging the worker only for rates.
-
-```
-src/
-├─ background/service-worker.ts   # rate fetching, caching, alarms, messaging
-├─ content/                       # price detection, conversion, page rewriting, right-click features
-├─ popup/                         # React + MUI converter UI and settings
-└─ shared/                        # conversion math, currency data, storage schema, messaging contract
-```
+The popup is React and Material UI. The content script and service worker are plain TypeScript with no framework. Vite and the CRXJS plugin handle the build. Exchange rates come from a free, no-key API: the service worker fetches one rate table, caches it, and every conversion is done locally from that table, so there is no network request per price.
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+MIT. See [LICENSE](LICENSE).

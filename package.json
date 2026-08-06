@@ -1,6 +1,6 @@
 {
   "name": "openconvert",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "private": true,
   "description": "Open-source Manifest V3 Chrome extension: popup currency converter + in-place price auto-conversion on any web page.",
   "license": "MIT",

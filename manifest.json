@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "OpenConvert",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "description": "Open-source Chrome extension to convert currencies and auto-convert prices on any web page.",
   "action": {
     "default_popup": "src/popup/index.html",
